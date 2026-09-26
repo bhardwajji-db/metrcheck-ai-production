@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: metrcheck-ai
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: METRCHECK_DEMO_MODE
+        value: "true"
+      - key: OCR_ENGINE
+        value: paddleocr
+      - key: MAX_FILE_SIZE_MB
+        value: "50"
+      - key: DATABASE_PATH
+        value: /data/metrcheck.db
+      - key: UPLOAD_DIR
+        value: /data/uploads

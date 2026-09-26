@@ -80,5 +80,5 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 7860
 
-# Start FastAPI and Nginx in the same container, ensuring Uvicorn is healthy before starting Nginx
-CMD ["bash", "-c", "uvicorn main:app --host 127.0.0.1 --port 8000 & backend_pid=$!; for i in $(seq 1 20); do curl -s -f http://127.0.0.1:8000/api/health >/dev/null 2>&1 && break || sleep 0.5; done; nginx -g 'daemon off;' & nginx_pid=$!; trap 'kill $backend_pid $nginx_pid 2>/dev/null || true' SIGTERM SIGINT; wait -n $backend_pid $nginx_pid; status=$?; kill $backend_pid $nginx_pid 2>/dev/null || true; exit $status"]
+# Start FastAPI and Nginx in the same container, dynamically adapting Nginx port to $PORT (Render/HF)
+CMD ["bash", "-c", "export PORT=${PORT:-7860}; sed -i \"s/listen [0-9]*;/listen $PORT;/\" /etc/nginx/conf.d/default.conf; uvicorn main:app --host 127.0.0.1 --port 8000 & backend_pid=$!; for i in $(seq 1 20); do curl -s -f http://127.0.0.1:8000/api/health >/dev/null 2>&1 && break || sleep 0.5; done; nginx -g 'daemon off;' & nginx_pid=$!; trap 'kill $backend_pid $nginx_pid 2>/dev/null || true' SIGTERM SIGINT; wait -n $backend_pid $nginx_pid; status=$?; kill $backend_pid $nginx_pid 2>/dev/null || true; exit $status"]
