@@ -99,8 +99,8 @@ OMSAINI_FOLDER/
 |---|------|-------|-------------|--------|
 | M1 | Repository & Codebase Audit Verification | Full audit of git repo, verify 1,040 passing tests, verify zero mocks in OCR & rules | none | DONE |
 | M2 | Production Backend Containerization & OCR Hardening | Hardened Dockerfile (port 7860, fonts-noto-core, Python 3.11, Nginx), security env vars, health check | M1 | DONE |
-| M3 | Production Frontend Build & Dynamic API Decoupling | Clean Vite build, dynamic API resolution via `VITE_API_URL`, verify UI visualizers & decoders | M1 | IN_PROGRESS |
-| M4 | Database Persistence & Storage Architecture | Configure WAL mode cloud persistence, test data survival across restarts, multi-tenant isolation | M2 | PLANNED |
+| M3 | Production Frontend Build & Dynamic API Decoupling | Clean Vite build, dynamic API resolution via `VITE_API_URL`, verify UI visualizers & decoders | M1 | DONE |
+| M4 | Database Persistence & Storage Architecture | Configure WAL mode cloud persistence, test data survival across restarts, multi-tenant isolation | M2 | IN_PROGRESS |
 | M5 | Cloud Provider Architecture & Automated Git CI/CD | Set up Hugging Face Spaces Docker (16GB) + Vercel config, GitHub Actions CI & sync workflow | M2, M3, M4 | PLANNED |
 | M6 | Live Production Verification & Operational Playbook | Live testing with real packaged commodity images, PDF/HTML generation, SHA-256 verification, runbook | M5 | PLANNED |
 

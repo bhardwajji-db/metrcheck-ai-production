@@ -1224,7 +1224,7 @@ export default function AdminUsers({ defaultTab }: AdminUsersProps) {
                             {log.target_username ? `@${log.target_username}` : '—'}
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
-                            {log.ip_address || '127.0.0.1'}
+                            {log.ip_address || '—'}
                           </td>
                           <td className="py-3 px-4 text-slate-400 text-[11px] whitespace-nowrap">
                             {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
