@@ -1,3 +1,13 @@
+---
+title: MetrCheck AI
+emoji: 🔍
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # MetrCheck AI
 
 **AI-Assisted Smart Automation Platform for Packaged-Product Compliance**  

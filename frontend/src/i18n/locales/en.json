@@ -501,7 +501,10 @@
     "primary_package_view": "Primary Package View",
     "secondary_package_view": "Secondary Package View",
     "switch_panel": "Switch Panel",
-    "loading_preview": "Loading package preview..."
+    "loading_preview": "Loading package preview...",
+    "issues_and_missing_docket": "Compliance Defects & Missing Declarations Docket",
+    "issues_subtitle": "Statutory non-compliances, missing mandatory elements, and red box visual proofs.",
+    "view_evidence_red_box": "View Evidence (Red Box)"
   },
   "evidence": {
     "title": "Visual & Semantic Evidence Chain",

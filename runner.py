@@ -98,7 +98,8 @@ def main():
         [
             python_exe, "-m", "uvicorn", "main:app",
             "--host", "0.0.0.0",
-            "--port", "8000"
+            "--port", "8000",
+            "--reload"
         ],
         cwd=str(BACKEND_DIR),
         env=backend_env,

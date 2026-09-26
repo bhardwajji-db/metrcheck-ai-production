@@ -1,4 +1,5 @@
 import os
+from typing import Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
     DATABASE_PATH: str = PROD_DATABASE_PATH
     MAX_FILE_SIZE_MB: int = 10
     LLM_API_KEY: str = ''
-    CORS_ORIGINS: list[str] = ['*']
+    CORS_ORIGINS: Union[list[str], str] = ['*']
     TEST_MODE: bool = False
     ENVIRONMENT: str = 'development'
     SECRET_KEY: str = 'metrcheck-dev-secret-change-in-prod'
@@ -58,7 +59,7 @@ class Settings(BaseSettings):
     METRCHECK_FRONTEND_URL: str = ""
     METRCHECK_DEMO_MODE: bool = True
     # Trusted Reverse Proxy Networks / IPs (SEC-AUD-03)
-    TRUSTED_PROXIES: list[str] = [
+    TRUSTED_PROXIES: Union[list[str], str] = [
         "127.0.0.1",
         "::1",
         "localhost",

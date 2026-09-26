@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   XCircle,
   Eye,
-  Crosshair
+  Crosshair,
+  Target,
+  ShieldAlert
 } from 'lucide-react';
 import { 
   type ProductImageEvidence, 
@@ -222,6 +224,7 @@ export default function EvidenceViewer({
   const [highlightActiveOnly, setHighlightActiveOnly] = useState<boolean>(true);
   const [showAllBBoxes, setShowAllBBoxes] = useState<boolean>(false);
   const [showRawTokens, setShowRawTokens] = useState<boolean>(false);
+  const [showIssuesOnly, setShowIssuesOnly] = useState<boolean>(false);
 
   // Authenticated Image Loading State
   const [imgSrcMap, setImgSrcMap] = useState<Record<number, string>>({});
@@ -385,13 +388,23 @@ export default function EvidenceViewer({
   };
 
   // Filtered evidence items for findings list
-  const displayedFindings = filterByImage && activeImage
-    ? evidenceItems.filter(item => {
-        const currentLabel = (activeImage.label || '').trim().toLowerCase();
+  const displayedFindings = useMemo(() => {
+    let list = evidenceItems;
+    if (showIssuesOnly) {
+      list = list.filter(item => {
+        const s = (item.status || '').toUpperCase();
+        return s === 'FAIL' || s === 'NON_COMPLIANT' || s === 'VIOLATION' || s === 'MISSING' || s === 'NEEDS_REVIEW' || s === 'WARNING';
+      });
+    }
+    if (filterByImage && activeImage) {
+      const currentLabel = (activeImage.label || '').trim().toLowerCase();
+      list = list.filter(item => {
         const itemLabel = (item.evidence_image_label || '').trim().toLowerCase();
         return item.image_index === selectedImageIndex || itemLabel === currentLabel || currentLabel.includes(itemLabel) || itemLabel.includes(currentLabel);
-      })
-    : evidenceItems;
+      });
+    }
+    return list;
+  }, [evidenceItems, showIssuesOnly, filterByImage, activeImage, selectedImageIndex]);
 
   const currentFindingIndex = displayedFindings.findIndex(i => i.rule_id === activeFinding?.rule_id);
 
@@ -422,10 +435,58 @@ export default function EvidenceViewer({
   };
 
   const isReviewRequired = activeFinding?.status === 'NEEDS_REVIEW' || activeFinding?.status === 'WARNING';
-  const isFail = activeFinding?.status === 'FAIL' || activeFinding?.status === 'NON_COMPLIANT';
+  const isFail = 
+    activeFinding?.status === 'FAIL' || 
+    activeFinding?.status === 'NON_COMPLIANT' || 
+    activeFinding?.status === 'VIOLATION' || 
+    activeFinding?.status === 'MISSING';
+
+  const isMissingDeclaration = useMemo(() => {
+    if (!activeFinding) return false;
+    if (activeFinding.field_status === 'MISSING' || activeFinding.status === 'MISSING') return true;
+    if (isFail && !activeBBox) return true;
+    const val = (activeFinding.detected_value || '').trim().toLowerCase();
+    if (isFail && (!val || val === 'not detected' || val === 'not found' || val === '-' || val === 'null' || val === 'none')) {
+      return true;
+    }
+    const r = (activeFinding.reason || activeFinding.fail_reason || '').toLowerCase();
+    if (isFail && (r.includes('missing') || r.includes('not found') || r.includes('absent') || r.includes('not detected'))) {
+      return true;
+    }
+    return false;
+  }, [activeFinding, isFail, activeBBox]);
+
+  const issuesCount = useMemo(() => {
+    return evidenceItems.filter(i => {
+      const s = (i.status || '').toUpperCase();
+      return s === 'FAIL' || s === 'NON_COMPLIANT' || s === 'VIOLATION' || s === 'MISSING' || s === 'NEEDS_REVIEW' || s === 'WARNING';
+    }).length;
+  }, [evidenceItems]);
 
   // Active image natural dimension
   const currentDim = imgDimensions[selectedImageIndex] || { width: 800, height: 1200 };
+
+  // Statutory missing declaration inspection zone coordinates (custom tailored by rule)
+  const missingInspectionZone = useMemo(() => {
+    const w = currentDim.width || 800;
+    const h = currentDim.height || 1200;
+    // Front panel items (Net Quantity, Commodity Name) under Rule 7/8
+    if (['LM-002', 'LM-003', 'FS-002'].includes(activeFinding?.rule_id || '')) {
+      return {
+        x: Math.round(w * 0.08),
+        y: Math.round(h * 0.68),
+        w: Math.round(w * 0.84),
+        h: Math.round(h * 0.24)
+      };
+    }
+    // General / back panel items (MRP, FSSAI, Manufacturer, Consumer Care, Date)
+    return {
+      x: Math.round(w * 0.08),
+      y: Math.round(h * 0.28),
+      w: Math.round(w * 0.84),
+      h: Math.round(h * 0.36)
+    };
+  }, [currentDim, activeFinding?.rule_id]);
 
   // Collect bounding boxes strictly on current active image panel
   const boxesOnCurrentPanel = useMemo(() => {
@@ -448,7 +509,7 @@ export default function EvidenceViewer({
     const s = (status || '').toUpperCase();
     if (s === 'PASS' || s === 'COMPLIANT' || s === 'VERIFIED') return '#10b981'; // emerald-500
     if (s === 'NEEDS_REVIEW' || s === 'WARNING') return '#f59e0b'; // amber-500
-    if (s === 'FAIL' || s === 'NON_COMPLIANT') return '#f43f5e'; // rose-500
+    if (s === 'FAIL' || s === 'NON_COMPLIANT' || s === 'VIOLATION' || s === 'MISSING' || s === 'NOT_FOUND') return '#ef4444'; // red-500
     return '#6366f1'; // indigo-500
   };
 
@@ -456,7 +517,7 @@ export default function EvidenceViewer({
     const s = (status || '').toUpperCase();
     if (s === 'PASS' || s === 'COMPLIANT' || s === 'VERIFIED') return 'rgba(16, 185, 129, 0.18)';
     if (s === 'NEEDS_REVIEW' || s === 'WARNING') return 'rgba(245, 158, 11, 0.22)';
-    if (s === 'FAIL' || s === 'NON_COMPLIANT') return 'rgba(244, 63, 94, 0.22)';
+    if (s === 'FAIL' || s === 'NON_COMPLIANT' || s === 'VIOLATION' || s === 'MISSING' || s === 'NOT_FOUND') return 'rgba(239, 68, 68, 0.25)';
     return 'rgba(99, 102, 241, 0.18)';
   };
 
@@ -586,9 +647,10 @@ export default function EvidenceViewer({
               onClick={() => {
                 setHighlightActiveOnly(true);
                 setShowAllBBoxes(false);
+                setShowIssuesOnly(false);
               }}
               className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                highlightActiveOnly && !showAllBBoxes
+                highlightActiveOnly && !showAllBBoxes && !showIssuesOnly
                   ? 'bg-indigo-600 text-white shadow-2xs'
                   : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -597,6 +659,31 @@ export default function EvidenceViewer({
               <Crosshair className="w-3.5 h-3.5 inline mr-1" />
               {t('evidence.active_finding', { defaultValue: 'Active Finding' })}
             </button>
+
+            {issuesCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowIssuesOnly(prev => {
+                    const next = !prev;
+                    if (next) {
+                      setHighlightActiveOnly(false);
+                      setShowAllBBoxes(true);
+                    }
+                    return next;
+                  });
+                }}
+                className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                  showIssuesOnly
+                    ? 'bg-red-600 text-white shadow-2xs font-bold'
+                    : 'text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 font-semibold'
+                }`}
+                title="Show red boxes for all issues and missing items"
+              >
+                <span className="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span>
+                <span>🔴 Issues & Missing ({issuesCount})</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -750,6 +837,9 @@ export default function EvidenceViewer({
                       <feGaussianBlur stdDeviation="4" result="blur" />
                       <feComposite in="SourceGraphic" in2="blur" operator="over" />
                     </filter>
+                    <filter id="red-glow" x="-30%" y="-30%" width="160%" height="160%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#ef4444" floodOpacity="0.85" />
+                    </filter>
                   </defs>
 
                   {/* 2A. Raw OCR Word Token Boxes (if toggled on) */}
@@ -775,7 +865,13 @@ export default function EvidenceViewer({
                   })}
 
                   {/* 2B. All Rules Bounding Boxes on this Panel (if toggled on) */}
-                  {showAllBBoxes && boxesOnCurrentPanel.map((item, bIdx) => {
+                  {showAllBBoxes && (showIssuesOnly 
+                    ? boxesOnCurrentPanel.filter(i => {
+                        const s = (i.status || '').toUpperCase();
+                        return s === 'FAIL' || s === 'NON_COMPLIANT' || s === 'VIOLATION' || s === 'MISSING' || s === 'NEEDS_REVIEW' || s === 'WARNING';
+                      })
+                    : boxesOnCurrentPanel
+                  ).map((item, bIdx) => {
                     if (!item.bbox) return null;
                     const bx = item.bbox[0];
                     const by = item.bbox[1];
@@ -784,6 +880,7 @@ export default function EvidenceViewer({
                     const isSelected = item.rule_id === activeFinding?.rule_id;
                     const strokeColor = getStatusStrokeColor(item.status);
                     const fillColor = getStatusFillColor(item.status);
+                    const isItemFail = item.status === 'FAIL' || item.status === 'NON_COMPLIANT' || item.status === 'VIOLATION' || item.status === 'MISSING';
 
                     return (
                       <g 
@@ -800,14 +897,15 @@ export default function EvidenceViewer({
                           height={bh}
                           fill={fillColor}
                           stroke={strokeColor}
-                          strokeWidth={isSelected ? "3" : "1.8"}
+                          strokeWidth={isSelected ? "3.5" : (isItemFail ? "2.5" : "1.8")}
                           rx="3"
+                          filter={isItemFail ? "url(#red-glow)" : undefined}
                         />
                         {/* Rule Label Tag at top-left of box */}
                         <rect
                           x={bx}
                           y={Math.max(0, by - 16)}
-                          width={Math.max(45, item.rule_id.length * 8 + 8)}
+                          width={Math.max(50, item.rule_id.length * 8 + (isItemFail ? 20 : 8))}
                           height="15"
                           fill={strokeColor}
                           rx="2"
@@ -820,7 +918,7 @@ export default function EvidenceViewer({
                           fontFamily="monospace"
                           fontWeight="bold"
                         >
-                          {item.rule_id}
+                          {isItemFail ? '❌ ' : ''}{item.rule_id}
                         </text>
                       </g>
                     );
@@ -835,17 +933,17 @@ export default function EvidenceViewer({
                     >
                       {/* Pulsing Outer Aura */}
                       <rect
-                        x={activeBBox[0] - 3}
-                        y={activeBBox[1] - 3}
-                        width={Math.max(6, activeBBox[2] - activeBBox[0] + 6)}
-                        height={Math.max(6, activeBBox[3] - activeBBox[1] + 6)}
+                        x={activeBBox[0] - 4}
+                        y={activeBBox[1] - 4}
+                        width={Math.max(8, activeBBox[2] - activeBBox[0] + 8)}
+                        height={Math.max(8, activeBBox[3] - activeBBox[1] + 8)}
                         fill="none"
-                        stroke={getStatusStrokeColor(activeFinding.status)}
-                        strokeWidth="2.5"
-                        strokeDasharray="4 2"
-                        rx="5"
-                        opacity="0.85"
-                        filter="url(#glow)"
+                        stroke={isFail ? "#ef4444" : getStatusStrokeColor(activeFinding.status)}
+                        strokeWidth={isFail ? "4" : "2.5"}
+                        strokeDasharray={isFail ? "6 3" : "4 2"}
+                        rx="6"
+                        opacity="0.9"
+                        filter={isFail ? "url(#red-glow)" : "url(#glow)"}
                         className="animate-pulse"
                       />
 
@@ -855,40 +953,145 @@ export default function EvidenceViewer({
                         y={activeBBox[1]}
                         width={Math.max(2, activeBBox[2] - activeBBox[0])}
                         height={Math.max(2, activeBBox[3] - activeBBox[1])}
-                        fill={getStatusFillColor(activeFinding.status)}
-                        stroke={getStatusStrokeColor(activeFinding.status)}
-                        strokeWidth="3.5"
+                        fill={isFail ? "rgba(239, 68, 68, 0.28)" : getStatusFillColor(activeFinding.status)}
+                        stroke={isFail ? "#dc2626" : getStatusStrokeColor(activeFinding.status)}
+                        strokeWidth={isFail ? "4" : "3.5"}
                         rx="4"
                       />
 
                       {/* Prominent High-Contrast Label Tag */}
-                      <g transform={`translate(${activeBBox[0]}, ${Math.max(0, activeBBox[1] - 22)})`}>
+                      <g transform={`translate(${activeBBox[0]}, ${Math.max(0, activeBBox[1] - 24)})`}>
                         <rect
                           x="0"
                           y="0"
-                          width={Math.max(70, activeFinding.rule_id.length * 9 + (currentEvidence?.field_type ? 65 : 45))}
-                          height="20"
-                          fill="#0f172a"
-                          stroke={getStatusStrokeColor(activeFinding.status)}
+                          width={Math.max(85, activeFinding.rule_id.length * 9 + (isFail ? 95 : (currentEvidence?.field_type ? 65 : 45)))}
+                          height="22"
+                          fill={isFail ? "#dc2626" : "#0f172a"}
+                          stroke={isFail ? "#fca5a5" : getStatusStrokeColor(activeFinding.status)}
                           strokeWidth="1.5"
                           rx="4"
-                          filter="url(#glow)"
+                          filter={isFail ? "url(#red-glow)" : "url(#glow)"}
                         />
                         <circle
-                          cx="9"
-                          cy="10"
-                          r="3.5"
-                          fill={getStatusStrokeColor(activeFinding.status)}
+                          cx="10"
+                          cy="11"
+                          r="4"
+                          fill={isFail ? "#ffffff" : getStatusStrokeColor(activeFinding.status)}
                         />
                         <text
-                          x="18"
-                          y="14"
-                          fill="#f8fafc"
+                          x="20"
+                          y="15"
+                          fill="#ffffff"
                           fontSize="11"
                           fontFamily="monospace"
                           fontWeight="bold"
                         >
-                          {activeFinding.rule_id}{currentEvidence?.field_type ? ` [${currentEvidence.field_type}]` : ''} · {activeFinding.status}
+                          {isFail ? '❌ DEFECT: ' : ''}{activeFinding.rule_id}{currentEvidence?.field_type ? ` [${currentEvidence.field_type}]` : ''} · {activeFinding.status}
+                        </text>
+                      </g>
+                    </g>
+                  )}
+
+                  {/* 2D. Active Missing Mandatory Declaration Inspection Red Box */}
+                  {isFindingOnCurrentPanel && isMissingDeclaration && !activeBBox && (
+                    <g className="cursor-pointer">
+                      {/* Pulsing red aura frame */}
+                      <rect
+                        x={missingInspectionZone.x}
+                        y={missingInspectionZone.y}
+                        width={missingInspectionZone.w}
+                        height={missingInspectionZone.h}
+                        fill="rgba(239, 68, 68, 0.16)"
+                        stroke="#dc2626"
+                        strokeWidth="3.5"
+                        strokeDasharray="10 6"
+                        rx="8"
+                        filter="url(#red-glow)"
+                        className="animate-pulse"
+                      />
+
+                      {/* 4 Corner Crosshairs */}
+                      <path
+                        d={`M ${missingInspectionZone.x} ${missingInspectionZone.y + 24} L ${missingInspectionZone.x} ${missingInspectionZone.y} L ${missingInspectionZone.x + 24} ${missingInspectionZone.y}
+                            M ${missingInspectionZone.x + missingInspectionZone.w - 24} ${missingInspectionZone.y} L ${missingInspectionZone.x + missingInspectionZone.w} ${missingInspectionZone.y} L ${missingInspectionZone.x + missingInspectionZone.w} ${missingInspectionZone.y + 24}
+                            M ${missingInspectionZone.x} ${missingInspectionZone.y + missingInspectionZone.h - 24} L ${missingInspectionZone.x} ${missingInspectionZone.y + missingInspectionZone.h} L ${missingInspectionZone.x + 24} ${missingInspectionZone.y + missingInspectionZone.h}
+                            M ${missingInspectionZone.x + missingInspectionZone.w - 24} ${missingInspectionZone.y + missingInspectionZone.h} L ${missingInspectionZone.x + missingInspectionZone.w} ${missingInspectionZone.y + missingInspectionZone.h} L ${missingInspectionZone.x + missingInspectionZone.w} ${missingInspectionZone.y + missingInspectionZone.h - 24}`}
+                        fill="none"
+                        stroke="#ef4444"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                      />
+
+                      {/* Prominent Red Tag on Top */}
+                      <g transform={`translate(${missingInspectionZone.x}, ${Math.max(4, missingInspectionZone.y - 28)})`}>
+                        <rect
+                          x="0"
+                          y="0"
+                          width={Math.min(missingInspectionZone.w, Math.max(300, (activeFinding?.rule_id?.length || 6) * 10 + 220))}
+                          height="26"
+                          fill="#dc2626"
+                          stroke="#b91c1c"
+                          strokeWidth="1.5"
+                          rx="6"
+                          filter="url(#red-glow)"
+                        />
+                        <text
+                          x="12"
+                          y="18"
+                          fill="#ffffff"
+                          fontSize="12"
+                          fontFamily="monospace"
+                          fontWeight="bold"
+                        >
+                          ❌ MISSING MANDATORY: {activeFinding?.rule_id}
+                        </text>
+                      </g>
+
+                      {/* Center Defect Alert Card */}
+                      <g transform={`translate(${missingInspectionZone.x + missingInspectionZone.w / 2 - Math.min(230, missingInspectionZone.w / 2 - 10)}, ${missingInspectionZone.y + missingInspectionZone.h / 2 - 32})`}>
+                        <rect
+                          x="0"
+                          y="0"
+                          width={Math.min(460, missingInspectionZone.w - 20)}
+                          height="64"
+                          fill="#7f1d1d"
+                          fillOpacity="0.94"
+                          stroke="#ef4444"
+                          strokeWidth="2"
+                          rx="8"
+                          filter="url(#red-glow)"
+                        />
+                        <text
+                          x={Math.min(460, missingInspectionZone.w - 20) / 2}
+                          y="24"
+                          textAnchor="middle"
+                          fill="#ffffff"
+                          fontSize="13"
+                          fontFamily="sans-serif"
+                          fontWeight="bold"
+                        >
+                          ⚠️ MANDATORY STATUTORY DECLARATION MISSING
+                        </text>
+                        <text
+                          x={Math.min(460, missingInspectionZone.w - 20) / 2}
+                          y="42"
+                          textAnchor="middle"
+                          fill="#fca5a5"
+                          fontSize="11"
+                          fontFamily="sans-serif"
+                          fontWeight="600"
+                        >
+                          {activeFinding?.title} — Not found anywhere on this package panel
+                        </text>
+                        <text
+                          x={Math.min(460, missingInspectionZone.w - 20) / 2}
+                          y="56"
+                          textAnchor="middle"
+                          fill="#fecaca"
+                          fontSize="10"
+                          fontFamily="monospace"
+                        >
+                          Legal Metrology Rules 2011 / FSSAI Labelling Violation
                         </text>
                       </g>
                     </g>
@@ -896,7 +1099,7 @@ export default function EvidenceViewer({
                 </svg>
 
                 {/* Non-Visual / Derived Finding Notice on Image Canvas */}
-                {(!activeBBox || !isFindingOnCurrentPanel) && (
+                {(!activeBBox || !isFindingOnCurrentPanel) && !isMissingDeclaration && (
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 bg-slate-900/95 text-white text-xs px-3.5 py-1.5 rounded-xl border border-slate-700 shadow-xl backdrop-blur-md flex items-center gap-2 max-w-[92%] pointer-events-none">
                     <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                     <span className="text-slate-300 text-[11px] font-medium truncate">
@@ -908,6 +1111,24 @@ export default function EvidenceViewer({
                         ? 'Statutory food proviso delegates requirement to FSSAI (Rule FS-005)'
                         : 'Declaration evaluated via OCR text; no isolated bounding box'}
                     </span>
+                  </div>
+                )}
+
+                {/* Interactive Switch Panel Button for Defect / Missing Evidence on other panels */}
+                {!isFindingOnCurrentPanel && (
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const foundIdx = findImageIndexForItem(activeFinding);
+                        setSelectedImageIndex(foundIdx);
+                        setShowCombinedOCR(false);
+                      }}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl border border-red-300 shadow-2xl flex items-center gap-2 cursor-pointer transition-transform hover:scale-105 active:scale-95 animate-pulse"
+                    >
+                      <Target className="w-4 h-4 text-white" />
+                      <span>Evidence is on the {activeEvidenceLabel} panel — Click here to switch panel & view Red Box</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1127,8 +1348,23 @@ export default function EvidenceViewer({
                 </div>
               </div>
 
-              {/* Semantic Evidence Banner when Visual BBox is Unavailable */}
-              {!activeBBox && (
+              {/* Missing Declaration Alert Banner */}
+              {isMissingDeclaration && (
+                <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border-2 border-red-300 dark:border-red-800 rounded-xl text-xs flex items-start gap-2.5 shadow-2xs">
+                  <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <div className="text-red-950 dark:text-red-200 space-y-1">
+                    <strong className="block font-bold text-sm text-red-900 dark:text-red-100 flex items-center gap-1.5">
+                      <span>❌ Mandatory Statutory Declaration Missing</span>
+                    </strong>
+                    <p className="text-xs text-red-800 dark:text-red-300 leading-relaxed font-medium">
+                      {activeFinding.fail_reason || activeFinding.reason || 'This mandatory statutory declaration was not found in the packaging OCR text. A red inspection frame has been projected on the packaging artwork to indicate where this mandatory declaration is required by law.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Semantic Evidence Banner when Visual BBox is Unavailable and not missing */}
+              {!activeBBox && !isMissingDeclaration && (
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs flex items-start gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                   <div className="text-amber-900 dark:text-amber-200 space-y-0.5">
@@ -1158,7 +1394,7 @@ export default function EvidenceViewer({
                       <span>{activeEvidenceLabel} {t('evidence.panel_word', { defaultValue: 'Panel' })}</span>
                     </span>
                     <span className="font-mono text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-800/60">
-                      {currentEvidence?.geometry_type || activeFinding.geometry_type || (activeBBox ? 'TOKEN_UNION' : 'NON_VISUAL')}
+                      {isMissingDeclaration && !activeBBox ? 'RED_MISSING_FRAME' : (currentEvidence?.geometry_type || activeFinding.geometry_type || (activeBBox ? 'TOKEN_UNION' : 'NON_VISUAL'))}
                     </span>
                   </div>
                   {activeBBox ? (
@@ -1167,6 +1403,10 @@ export default function EvidenceViewer({
                       <span className="bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200">
                         [x1: {activeBBox[0]}, y1: {activeBBox[1]}, x2: {activeBBox[2]}, y2: {activeBBox[3]}]
                       </span>
+                    </div>
+                  ) : isMissingDeclaration ? (
+                    <div className="text-red-800 dark:text-red-300 bg-red-50/80 dark:bg-red-950/40 p-2.5 rounded-lg border border-red-200 dark:border-red-900/60 text-[11px] leading-relaxed">
+                      <strong>Projected Red Box Inspection Frame:</strong> [x: {missingInspectionZone.x}, y: {missingInspectionZone.y}, w: {missingInspectionZone.w}, h: {missingInspectionZone.h}] — Mandatory statutory declaration not found on package face.
                     </div>
                   ) : activeFinding.rule_id === 'LM-009' ? (
                     <div className="text-indigo-800 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 text-[11px] leading-relaxed">
@@ -1310,6 +1550,7 @@ export default function EvidenceViewer({
             <div className="space-y-1.5 overflow-y-auto max-h-[220px] pr-1">
               {displayedFindings.map(item => {
                 const isSelected = item.rule_id === activeRuleId;
+                const isItemFail = item.status === 'FAIL' || item.status === 'NON_COMPLIANT' || item.status === 'VIOLATION' || item.status === 'MISSING';
                 const statusColor = 
                   item.status === 'PASS' ? 'bg-emerald-500' :
                   item.status === 'FAIL' ? 'bg-red-500' :
@@ -1323,18 +1564,23 @@ export default function EvidenceViewer({
                     onClick={() => handleSelectFinding(item)}
                     className={`w-full text-left p-2.5 rounded-xl border text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
                       isSelected
-                        ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 shadow-2xs'
-                        : 'bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700'
+                        ? (isItemFail ? 'bg-red-50 dark:bg-red-950/70 border-red-500 dark:border-red-600 shadow-2xs font-semibold' : 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 shadow-2xs')
+                        : (isItemFail ? 'bg-red-50/30 dark:bg-red-950/20 hover:bg-red-50/60 dark:hover:bg-red-950/40 border-red-200/80 dark:border-red-900/50' : 'bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700')
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-2 h-2 rounded-full ${statusColor} shrink-0`}></span>
-                      <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{item.rule_id}</span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${statusColor} shrink-0 ${isItemFail ? 'animate-pulse' : ''}`}></span>
+                      <span className={`font-mono font-bold ${isItemFail ? 'text-red-700 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>{item.rule_id}</span>
                       <span className="truncate text-slate-800 dark:text-slate-200 font-medium">{item.title}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {item.bbox && (
+                      {isItemFail && (
+                        <span className="text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950 px-1.5 py-0.2 rounded border border-red-300 dark:border-red-800">
+                          RED BOX
+                        </span>
+                      )}
+                      {item.bbox && !isItemFail && (
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" title="Visual BBox Available"></span>
                       )}
                       <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-800">

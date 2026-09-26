@@ -515,6 +515,7 @@ export default function Results() {
             gs1Verification={data.gs1_verification}
             fssaiLicense={product_info.fssai_license}
             externalVerification={data.external_verification}
+            productInfo={product_info}
           />
         </div>
       )}

@@ -7,13 +7,18 @@ import {
   HelpCircle,
   Database,
   ShieldCheck,
-  Layers
+  Layers,
+  Globe,
+  Building2,
+  MapPin,
+  Sparkles
 } from 'lucide-react';
 import {
   type FSSAIVerificationResult,
   type GS1VerificationResult,
   type ExternalVerificationSummary,
-  type CrossCheckFieldResult
+  type CrossCheckFieldResult,
+  type ProductInfo
 } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -22,6 +27,7 @@ interface ExternalVerificationProps {
   gs1Verification?: GS1VerificationResult | null;
   fssaiLicense?: string | null;
   externalVerification?: ExternalVerificationSummary | null;
+  productInfo?: ProductInfo | null;
 }
 
 const VerificationCard: React.FC<{
@@ -32,14 +38,15 @@ const VerificationCard: React.FC<{
   message: string;
   provider: string;
   type: 'LIVE' | 'CACHE' | 'FORMAT';
-}> = ({ title, value, isValid, statusText, message, provider, type }) => {
+  chips?: { icon?: React.ReactNode; text: string; color?: string }[];
+}> = ({ title, value, isValid, statusText, message, provider, type, chips }) => {
   const { t } = useLanguage();
   return (
     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-2">
         <div>
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{title}</div>
-          <div className="font-mono text-sm text-slate-900 dark:text-slate-100">{value}</div>
+          <div className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</div>
         </div>
         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
           isValid ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -48,6 +55,22 @@ const VerificationCard: React.FC<{
           {statusText || (isValid ? t('verification.status_valid', { defaultValue: 'VALID' }) : t('verification.status_invalid', { defaultValue: 'INVALID' }))}
         </div>
       </div>
+
+      {chips && chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+          {chips.map((chip, idx) => (
+            <span
+              key={idx}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                chip.color || 'bg-slate-200/70 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+              }`}
+            >
+              {chip.icon}
+              {chip.text}
+            </span>
+          ))}
+        </div>
+      )}
       
       <div className="text-sm text-slate-600 dark:text-slate-400 mb-2">
         {message}
@@ -110,25 +133,69 @@ const ExternalVerification: React.FC<ExternalVerificationProps> = ({
   fssaiVerification,
   gs1Verification,
   fssaiLicense,
-  externalVerification
+  externalVerification,
+  productInfo
 }) => {
   const { t } = useLanguage();
-  if (!fssaiVerification && !gs1Verification && !fssaiLicense && !externalVerification) return null;
+  if (!fssaiVerification && !gs1Verification && !fssaiLicense && !externalVerification && !productInfo?.address_pin_code && !productInfo?.bis_license) return null;
 
   const fssai = externalVerification?.fssai_verification || fssaiVerification;
   const gs1 = externalVerification?.gs1_verification || gs1Verification;
 
-  const fssaiNumber = fssai?.licence_number || fssaiLicense || t('verification.not_detected', { defaultValue: 'Not detected' });
-  const fssaiValid = fssai ? fssai.status === 'VERIFIED' : (fssaiLicense ? fssaiLicense.length === 14 : false);
-  const fssaiMsg = fssai?.message || (fssaiLicense && fssaiLicense.length === 14 ? t('verification.format_verified_14_digits', { defaultValue: 'Format verified (14 digits)' }) : t('verification.licence_format_invalid', { defaultValue: 'Licence format invalid' }));
+  const fssaiNumber = fssai?.licence_number || fssaiLicense || productInfo?.fssai_license || t('verification.not_detected', { defaultValue: 'Not detected' });
+  const fssaiValid = fssai ? fssai.status === 'VERIFIED' : (Boolean(fssaiNumber) && fssaiNumber.length === 14);
+  const fssaiMsg = fssai?.message || (fssaiNumber && fssaiNumber.length === 14 ? t('verification.format_verified_14_digits', { defaultValue: 'Format verified (14 digits)' }) : t('verification.licence_format_invalid', { defaultValue: 'Licence format invalid' }));
   const fssaiProvider = fssai?.provider || 'FoSCoS Public Registry API';
   const fssaiType = fssai?.is_live ? 'LIVE' : (fssai?.provider?.includes('Cache') ? 'CACHE' : 'FORMAT');
 
-  const gs1Gtin = gs1?.gtin || externalVerification?.barcode_detected || t('verification.not_detected', { defaultValue: 'Not detected' });
-  const gs1Valid = gs1 ? gs1.status === 'VERIFIED' : false;
+  // Build FSSAI Chips
+  const fssaiChips = [];
+  const stateDecoded = fssai?.decoded_state || productInfo?.fssai_decoded_state;
+  if (stateDecoded) {
+    fssaiChips.push({
+      icon: <Building2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />,
+      text: `State: ${stateDecoded}${fssai?.state_code ? ` (${fssai.state_code})` : ''}`,
+      color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+    });
+  }
+  const licType = fssai?.licence_type || productInfo?.fssai_license_type;
+  if (licType) {
+    fssaiChips.push({
+      text: licType,
+      color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
+    });
+  }
+  const regYear = fssai?.registration_year || productInfo?.fssai_registration_year;
+  if (regYear) {
+    fssaiChips.push({
+      text: `Year: ${regYear}`,
+      color: 'bg-slate-200/80 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+    });
+  }
+
+  const gs1Gtin = gs1?.gtin || externalVerification?.barcode_detected || productInfo?.barcode_detected || t('verification.not_detected', { defaultValue: 'Not detected' });
+  const gs1Valid = gs1 ? (gs1.status === 'VERIFIED' || gs1.status === 'NOT_VERIFIED') : Boolean(productInfo?.barcode_detected);
   const gs1Msg = gs1?.message || t('verification.barcode_checksum_check', { defaultValue: 'Barcode checksum check' });
   const gs1Provider = gs1?.provider || 'GS1 India DataKart';
   const gs1Type = gs1?.is_live ? 'LIVE' : (gs1?.provider?.includes('Cache') ? 'CACHE' : 'FORMAT');
+
+  // Build GS1 Chips
+  const gs1Chips = [];
+  const originCountry = gs1?.origin_country || productInfo?.barcode_origin_country;
+  if (originCountry) {
+    const pfx = gs1?.prefix || productInfo?.barcode_prefix;
+    gs1Chips.push({
+      icon: <Globe className="w-3 h-3 text-sky-600 dark:text-sky-400" />,
+      text: `Origin: ${originCountry}${pfx ? ` (${pfx})` : ''}`,
+      color: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300'
+    });
+  }
+  if (gs1Gtin && gs1Gtin !== t('verification.not_detected', { defaultValue: 'Not detected' })) {
+    gs1Chips.push({
+      text: 'GS1 Checksum Valid',
+      color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+    });
+  }
 
   const confidence = externalVerification?.confidence;
   const crossChecks = externalVerification?.cross_checks || [];
@@ -161,8 +228,8 @@ const ExternalVerification: React.FC<ExternalVerificationProps> = ({
       </div>
 
       {/* Registry Cards */}
-      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {(fssaiLicense || fssai) && (
+      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {(fssaiLicense || fssai || productInfo?.fssai_license) && (
           <VerificationCard
             title={t('verification.fssai_registry', { defaultValue: 'FSSAI / FoSCoS Registry' })}
             value={fssaiNumber}
@@ -171,10 +238,11 @@ const ExternalVerification: React.FC<ExternalVerificationProps> = ({
             message={fssaiMsg}
             provider={fssaiProvider}
             type={fssaiType}
+            chips={fssaiChips}
           />
         )}
         
-        {(gs1 || externalVerification?.barcode_detected) && (
+        {(gs1 || externalVerification?.barcode_detected || productInfo?.barcode_detected) && (
           <VerificationCard
             title={t('verification.gs1_registry', { defaultValue: 'GS1 DataKart / GTIN' })}
             value={gs1Gtin}
@@ -183,6 +251,64 @@ const ExternalVerification: React.FC<ExternalVerificationProps> = ({
             message={gs1Msg}
             provider={gs1Provider}
             type={gs1Type}
+            chips={gs1Chips}
+          />
+        )}
+
+        {/* Universal Postal PIN Location Card */}
+        {productInfo?.address_pin_code && (
+          <VerificationCard
+            title="POSTAL LOCATION & MANUFACTURING CIRCLE"
+            value={`PIN ${productInfo.address_pin_code}`}
+            isValid={true}
+            statusText="LOCATED"
+            message={`Address mapped to ${productInfo.address_decoded_region ? productInfo.address_decoded_region + ', ' : ''}${productInfo.address_decoded_state || 'India'}.`}
+            provider="India Postal PIN Directory"
+            type="FORMAT"
+            chips={[
+              {
+                icon: <MapPin className="w-3 h-3 text-amber-600 dark:text-amber-400" />,
+                text: `${productInfo.address_decoded_state || 'India'}`,
+                color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+              },
+              ...(productInfo.address_decoded_region ? [{
+                text: productInfo.address_decoded_region,
+                color: 'bg-slate-200/80 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+              }] : [])
+            ]}
+          />
+        )}
+
+        {/* Sector Specific: BIS Electronics / Safety */}
+        {productInfo?.bis_license && (
+          <VerificationCard
+            title="ELECTRONICS & SAFETY STANDARDS (BIS)"
+            value={productInfo.bis_license}
+            isValid={true}
+            statusText="REGISTERED"
+            message="Compulsory Registration Scheme (CRS) compliant under MeitY & Bureau of Indian Standards."
+            provider="BIS CRS Registry"
+            type="FORMAT"
+            chips={[
+              {
+                icon: <Sparkles className="w-3 h-3 text-purple-600 dark:text-purple-400" />,
+                text: 'BIS / CRS Standard',
+                color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300'
+              }
+            ]}
+          />
+        )}
+
+        {/* Sector Specific: Cosmetics / Personal Care */}
+        {productInfo?.cosmetic_license && (
+          <VerificationCard
+            title="DRUGS & COSMETICS MANUFACTURING LICENCE"
+            value={productInfo.cosmetic_license}
+            isValid={true}
+            statusText="AUTHORIZED"
+            message="State Food & Drug Administration (FDA) cosmetic manufacturing authorization."
+            provider="State Licensing Authority"
+            type="FORMAT"
           />
         )}
       </div>

@@ -30,10 +30,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgl1 \
     libstdc++6 \
+    fonts-noto-core \
     fonts-dejavu \
     curl \
     nginx \
     && rm -rf /var/lib/apt/lists/*
+
+# Create Hugging Face Spaces non-root user (UID 1000)
+RUN useradd -m -u 1000 user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
+
+# Set up storage, model cache, and runtime directories with permissive permissions for non-root execution
+RUN mkdir -p /data/uploads /var/log/nginx /var/lib/nginx /run /home/user/.paddleocr \
+    && chown -R 1000:1000 /home/user /data \
+    && chmod -R 777 /data /data/uploads /var/log/nginx /var/lib/nginx /run /home/user
 
 # ------------------------------------------------------------
 # Backend
@@ -65,9 +76,9 @@ RUN rm -f /etc/nginx/sites-enabled/default
 ENV PYTHONUNBUFFERED=1 \
     OCR_ENGINE=paddleocr \
     UPLOAD_DIR=/data/uploads \
-    DATABASE_PATH=/data/metrc_check.db
+    DATABASE_PATH=/data/metrcheck.db
 
-EXPOSE 80
+EXPOSE 7860
 
-# Start FastAPI and Nginx in the same container
-CMD ["bash", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 & backend_pid=$!; nginx -g 'daemon off;' & nginx_pid=$!; trap 'kill $backend_pid $nginx_pid 2>/dev/null || true' SIGTERM SIGINT; wait -n $backend_pid $nginx_pid; status=$?; kill $backend_pid $nginx_pid 2>/dev/null || true; exit $status"]
+# Start FastAPI and Nginx in the same container, ensuring Uvicorn is healthy before starting Nginx
+CMD ["bash", "-c", "uvicorn main:app --host 127.0.0.1 --port 8000 & backend_pid=$!; for i in $(seq 1 20); do curl -s -f http://127.0.0.1:8000/api/health >/dev/null 2>&1 && break || sleep 0.5; done; nginx -g 'daemon off;' & nginx_pid=$!; trap 'kill $backend_pid $nginx_pid 2>/dev/null || true' SIGTERM SIGINT; wait -n $backend_pid $nginx_pid; status=$?; kill $backend_pid $nginx_pid 2>/dev/null || true; exit $status"]

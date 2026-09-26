@@ -5,6 +5,7 @@ from utils.datetime_utils import get_current_utc_iso
 from config import settings
 from integrations.gs1.schemas import GS1VerificationRecord, GS1VerificationStatus
 from integrations.gs1.providers import GS1DataKartApiProvider, LocalGS1CacheProvider, BaseGS1Provider
+from integrations.gs1.prefix_catalog import decode_gs1_gtin
 
 logger = logging.getLogger(__name__)
 
@@ -74,29 +75,43 @@ class GS1BarcodeVerifier:
                 message=f"Barcode '{gtin}' does not pass standard GS1 Modulo-10 checksum validation (Length: {len(clean_gtin)} digits)."
             )
 
+        # Decode country of origin from GS1 prefix
+        decoded_origin = decode_gs1_gtin(clean_gtin)
+        origin_country = decoded_origin["country_name"] if decoded_origin else None
+        origin_prefix = decoded_origin["prefix"] if decoded_origin else None
+
         # 1. Attempt primary provider (GS1 DataKart API)
         res = await self.primary_provider.verify_gtin(clean_gtin)
         if res.status in (GS1VerificationStatus.VERIFIED, GS1VerificationStatus.NOT_FOUND):
+            res.origin_country = origin_country
+            res.prefix = origin_prefix
             return res
 
         # 2. Attempt fallback provider (Local cache)
         if self.fallback_provider and res.status in (GS1VerificationStatus.NOT_VERIFIED, GS1VerificationStatus.SERVICE_UNAVAILABLE):
             cache_res = await self.fallback_provider.verify_gtin(clean_gtin)
             if cache_res.status == GS1VerificationStatus.VERIFIED:
+                cache_res.origin_country = origin_country
+                cache_res.prefix = origin_prefix
                 return cache_res
 
-        # 3. Return local format & checksum verification
+        # 3. Return local format & checksum verification with decoded origin
         if res.status == GS1VerificationStatus.NOT_VERIFIED:
             gtin_type = f"GTIN-{len(clean_gtin)}"
+            origin_msg = f" Origin prefix indicates {origin_country} ({origin_prefix})." if origin_country else ""
             return GS1VerificationRecord(
                 gtin=clean_gtin,
                 status=GS1VerificationStatus.NOT_VERIFIED,
                 provider="MetrCheck Local GS1 Checksum Validator",
+                origin_country=origin_country,
+                prefix=origin_prefix,
                 is_live=False,
                 verification_timestamp=now_ts,
-                message=f"Standard {gtin_type} structure and Modulo-10 checksum validated. Live DataKart registry check unconfigured."
+                message=f"Standard {gtin_type} structure and Modulo-10 checksum validated.{origin_msg} Live DataKart registry check unconfigured."
             )
 
+        res.origin_country = origin_country
+        res.prefix = origin_prefix
         return res
 
 # Global instance

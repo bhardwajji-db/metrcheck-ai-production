@@ -45,6 +45,18 @@ PATTERNS = {
         r'(?:Batch\s*(?:No\.?|Number)?|Lot\s*(?:No\.?|Number)?|B\.?\s*No\.?|BATCH|LOT|BATCH\s*NO\.?|बैच\s*(?:संख्या|नं\.?|क्र\.?)|लॉट\s*नं\.?)[\s.:\-]*([A-Za-z0-9\-_\/]+)',
         re.IGNORECASE
     ),
+    'bis_license': re.compile(
+        r'(?:BIS|CRS|R\s*-\s*|Reg\.?\s*No\.?|Registration\s*No\.?)[\s.:\-=]*(R\s*-\s*\d{8}|\b\d{8}\b)',
+        re.IGNORECASE
+    ),
+    'isi_license': re.compile(
+        r'(?:ISI|CM\s*\/\s*L\s*|CML)[\s.:\-=]*(?:CM\s*\/\s*L\s*[-:]?\s*)?(\d{7,10})',
+        re.IGNORECASE
+    ),
+    'cosmetic_license': re.compile(
+        r'(?:M\.?L\.?\s*No\.?|Mfg\.?\s*Lic\.?\s*(?:No\.?)?|Cosmetic\s*Lic\.?\s*(?:No\.?)?|M\s*-\s*[A-Z0-9\/\-]+)[\s.:\-]*([A-Z0-9\/\-]{4,25})',
+        re.IGNORECASE
+    ),
 }
 
 FALLBACK_PATTERNS = {

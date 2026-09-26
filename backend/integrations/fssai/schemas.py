@@ -21,6 +21,9 @@ class FSSAIVerificationRecord(BaseModel):
     provider: str = "FoSCoS Official Registry API / Verified Provider"
     business_name: Optional[str] = None
     licence_type: Optional[str] = None
+    decoded_state: Optional[str] = None
+    state_code: Optional[str] = None
+    registration_year: Optional[str] = None
     valid_upto: Optional[str] = None
     is_live: bool = False
     verification_timestamp: Optional[str] = None

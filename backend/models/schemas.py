@@ -106,8 +106,16 @@ class ProductInfo(BaseModel):
     allergen_info: Optional[str] = None
     veg_nonveg_status: Optional[str] = None
     barcode_detected: Optional[str] = None
+    barcode_origin_country: Optional[str] = None
+    barcode_prefix: Optional[str] = None
     fssai_decoded_state: Optional[str] = None
     fssai_license_type: Optional[str] = None
+    fssai_registration_year: Optional[str] = None
+    address_decoded_state: Optional[str] = None
+    address_decoded_region: Optional[str] = None
+    address_pin_code: Optional[str] = None
+    bis_license: Optional[str] = None
+    cosmetic_license: Optional[str] = None
     other_declarations: Dict[str, str] = {}
     declaration_confidences: Dict[str, float] = {}
     field_provenance: Dict[str, FieldProvenance] = {}

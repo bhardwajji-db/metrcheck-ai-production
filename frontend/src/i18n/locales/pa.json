@@ -501,7 +501,10 @@
     "primary_package_view": "ਮੁੱਢਲਾ ਪੈਕੇਜ ਦ੍ਰਿਸ਼",
     "secondary_package_view": "ਸੈਕੰਡਰੀ ਪੈਕੇਜ ਦ੍ਰਿਸ਼",
     "switch_panel": "ਪੈਨਲ ਬਦਲੋ",
-    "loading_preview": "ਪੈਕੇਜ ਪੂਰਵਦਰਸ਼ਨ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ..."
+    "loading_preview": "ਪੈਕੇਜ ਪੂਰਵਦਰਸ਼ਨ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...",
+    "issues_and_missing_docket": "ਪਾਲਣਾ ਨੁਕਸ ਅਤੇ ਗੁੰਮ ਘੋਸ਼ਣਾਵਾਂ ਡੌਕੇਟ",
+    "issues_subtitle": "ਕਾਨੂੰਨੀ ਗੈਰ-ਪਾਲਣਾ, ਗੁੰਮ ਲਾਜ਼ਮੀ ਤੱਤ ਅਤੇ ਲਾਲ ਬਾਕਸ ਵਿਜ਼ੂਅਲ ਸਬੂਤ।",
+    "view_evidence_red_box": "ਸਬੂਤ ਦੇਖੋ (ਲਾਲ ਬਾਕਸ)"
   },
   "evidence": {
     "title": "ਵਿਜ਼ੂਅਲ ਅਤੇ ਅਰਥਪੂਰਨ ਸਬੂਤ ਲੜੀ",

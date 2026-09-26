@@ -494,13 +494,21 @@ def generate_pdf_report(
     ]
 
     if attention_checks:
-        story.append(Paragraph(ui_labels.get("items_requiring_attention", 'ITEMS REQUIRING ATTENTION & WHAT THIS MEANS'), styles['SectionHeading']))
+        story.append(Paragraph(ui_labels.get("items_requiring_attention", 'COMPLIANCE DEFECTS & MISSING DECLARATIONS DOCKET'), styles['SectionHeading']))
         for ac in attention_checks:
             st_upper = (ac.status or 'NEEDS_REVIEW').upper()
             fg_col, bg_col = _status_color(st_upper)
             loc_st = localize_status(st_upper, canon_lang)
             loc_lbl = localize_rule_label(ac.rule_id, canon_lang)
             
+            # Check if this is a missing declaration
+            det_val = (ac.detected_value or '').strip()
+            is_missing = (
+                getattr(ac, 'field_status', None) == 'MISSING'
+                or (st_upper in ('FAIL', 'NON_COMPLIANCE') and (not det_val or det_val.lower() in ('not detected', 'not found', '-', 'none', 'null')))
+                or (st_upper in ('FAIL', 'NON_COMPLIANCE') and 'missing' in (ac.explanation or '').lower())
+            )
+
             # Plain explanation
             loc_expl = localize_explanation(ac.rule_id, st_upper, ac.detected_value, canon_lang)
             
@@ -509,25 +517,30 @@ def generate_pdf_report(
             if ac.evidence_region:
                 ev_loc += f" → {ac.evidence_region}"
 
-            det_val_str = _safe_str(ac.detected_value, 'No declaration detected')
+            det_val_str = _safe_str(ac.detected_value, 'No declaration detected on packaging')
 
             # Find matching recommendation if any
             rec_match = next((r for r in recommendations if r.rule_id == ac.rule_id), None)
             rec_action_text = rec_match.recommended_action if rec_match else "Verify physical packaging text against statutory requirements."
 
+            tag_str = "[MISSING MANDATORY DECLARATION]" if is_missing else f"[{loc_st}]"
+            header_color = RED if is_missing else fg_col
+            box_bg = RED_LIGHT if is_missing else bg_col
+            box_border = RED if is_missing else fg_col
+
             att_content = [
-                Paragraph(f'<b>{ac.rule_id} — {loc_lbl}</b> &nbsp;&nbsp; <font color="{fg_col.hexval()}">[{loc_st}]</font>', styles['AttentionTitle']),
-                Paragraph(f'<b>{ui_labels.get("detected", "Detected")}:</b> {det_val_str} &nbsp;|&nbsp; <b>{ui_labels.get("evidence", "Evidence")}:</b> {ev_loc}', styles['AttentionBody']),
+                Paragraph(f'<b>{ac.rule_id} — {loc_lbl}</b> &nbsp;&nbsp; <font color="{header_color.hexval()}"><b>{tag_str}</b></font>', styles['AttentionTitle']),
+                Paragraph(f'<b>{ui_labels.get("detected", "Detected Status")}:</b> {"❌ ABSENT / NOT FOUND ON PACKAGING" if is_missing else det_val_str} &nbsp;|&nbsp; <b>{ui_labels.get("evidence", "Evidence Face")}:</b> {ev_loc}', styles['AttentionBody']),
                 Paragraph(f'<b>{ui_labels.get("what_this_means", "What this means")}:</b> {loc_expl}', styles['AttentionBody']),
-                Paragraph(f'<b>{ui_labels.get("recommended_check", "Recommended Check")}:</b> {rec_action_text}', styles['AttentionAction']),
+                Paragraph(f'<b>{ui_labels.get("recommended_check", "Recommended Action")}:</b> {rec_action_text}', styles['AttentionAction']),
             ]
 
             att_tbl = Table([[Paragraph(c, styles['AttentionBody']) if isinstance(c, str) else c] for c in att_content], colWidths=[w_avail])
             att_tbl.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), bg_col),
-                ('BOX', (0, 0), (-1, -1), 0.75, fg_col),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('BACKGROUND', (0, 0), (-1, -1), box_bg),
+                ('BOX', (0, 0), (-1, -1), 1.0 if is_missing else 0.75, box_border),
+                ('TOPPADDING', (0, 0), (-1, -1), 2.2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.2),
                 ('LEFTPADDING', (0, 0), (-1, -1), 3*mm),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 3*mm),
             ]))
@@ -908,6 +921,17 @@ def generate_pdf_report(
                 img_items.append(rl_img)
             else:
                 img_items.append(Paragraph('<i>Image visual proof preview unavailable on this device</i>', styles['SmallText']))
+
+            panel_defects = [
+                f"{c.rule_id} ({c.field_label or c.field})" for c in checks
+                if (c.evidence_image_label or '').lower() in (img_label or '').lower() or (img_label or '').lower() in (c.evidence_image_label or '').lower()
+                if (c.status or '').upper() in ('FAIL', 'NON_COMPLIANCE')
+            ]
+            if panel_defects:
+                img_items.append(Paragraph(
+                    f'<font color="{RED.hexval()}"><b>⚠️ Visual Evidence Red Box Indicators on this Face:</b> {", ".join(panel_defects)} (Inspect in Web Evidence Viewer)</font>',
+                    styles['SmallText']
+                ))
 
             img_items.append(Spacer(1, 2*mm))
             story.append(KeepTogether(img_items))

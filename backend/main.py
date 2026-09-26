@@ -19,7 +19,11 @@ async def lifespan(app: FastAPI):
     # Startup validation
     settings.verify_test_isolation()
     settings.validate_production_secrets()
-    await init_db()
+    try:
+        await init_db()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Startup database initialization failed (service degraded): %s", exc)
     yield
     # Shutdown
 

@@ -81,6 +81,17 @@ export interface ProductInfo {
   nutrition_panel_detected?: boolean | null;
   nutrition_facts?: Record<string, string> | null;
   allergen_info: string | null;
+  barcode_detected?: string | null;
+  barcode_origin_country?: string | null;
+  barcode_prefix?: string | null;
+  fssai_decoded_state?: string | null;
+  fssai_license_type?: string | null;
+  fssai_registration_year?: string | null;
+  address_decoded_state?: string | null;
+  address_decoded_region?: string | null;
+  address_pin_code?: string | null;
+  bis_license?: string | null;
+  cosmetic_license?: string | null;
   other_declarations: Record<string, string>;
   declaration_confidences?: Record<string, number>;
   field_provenance?: Record<string, FieldProvenance>;
@@ -603,6 +614,9 @@ export interface FSSAIVerificationResult {
   provider: string;
   business_name?: string | null;
   licence_type?: string | null;
+  decoded_state?: string | null;
+  state_code?: string | null;
+  registration_year?: string | null;
   valid_upto?: string | null;
   verification_timestamp?: string | null;
   message: string;
@@ -614,6 +628,8 @@ export interface GS1VerificationResult {
   gtin?: string | null;
   status: 'VERIFIED' | 'NOT_FOUND' | 'MISMATCH' | 'INVALID_FORMAT' | 'SERVICE_UNAVAILABLE' | 'NOT_VERIFIED' | 'NOT_APPLICABLE';
   provider: string;
+  origin_country?: string | null;
+  prefix?: string | null;
   brand_name?: string | null;
   product_description?: string | null;
   company_name?: string | null;

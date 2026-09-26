@@ -30,6 +30,50 @@
         <div>Status: <strong>{{ analysis.compliance_result.status }}</strong></div>
     </div>
 
+    <!-- Defects & Missing Declarations Docket -->
+    {% set defects = [] %}
+    {% for check in analysis.compliance_result.checks %}
+        {% if check.status in ['fail', 'FAIL', 'non_compliance', 'NON_COMPLIANCE'] or check.status in ['warning', 'WARNING', 'needs_review', 'NEEDS_REVIEW'] %}
+            {% set _ = defects.append(check) %}
+        {% endif %}
+    {% endfor %}
+
+    {% if defects %}
+    <div style="background: #fef2f2; border: 2px solid #ef4444; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
+        <h3 style="color: #dc2626; margin-top: 0; display: flex; align-items: center; gap: 8px;">
+            ⚠️ Compliance Defects & Missing Statutory Declarations ({{ defects|length }})
+        </h3>
+        <p style="font-size: 13px; color: #7f1d1d; margin-bottom: 15px;">
+            The following mandatory statutory items are missing or violate packaging standards. In the visual proof system, these are marked with prominent <strong>Red Bounding Boxes</strong>.
+        </p>
+        <table style="background: #ffffff; border: 1px solid #fca5a5;">
+            <thead>
+                <tr style="background: #fee2e2; color: #991b1b;">
+                    <th>Type</th>
+                    <th>Statutory Rule</th>
+                    <th>Field / Requirement</th>
+                    <th>Detected Status</th>
+                    <th>Defect / Missing Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in defects %}
+                {% set is_missing = not d.detected_value or d.detected_value in ['Not Detected', 'Not detected', 'not found', '-', 'None', 'null'] %}
+                <tr>
+                    <td style="font-weight: bold; color: {% if is_missing %}#dc2626{% else %}#d97706{% endif %};">
+                        {% if is_missing %}❌ MISSING{% else %}⚠️ ISSUE{% endif %}
+                    </td>
+                    <td><code>{{ d.rule_id }}</code></td>
+                    <td><strong>{{ d.field_label }}</strong></td>
+                    <td>{{ d.detected_value or 'Absent from packaging' }}</td>
+                    <td style="font-size: 13px;">{{ d.explanation or d.description }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
     <h3>Product Information</h3>
     <table>
         <tr><th>Field</th><th>Detected Value</th></tr>

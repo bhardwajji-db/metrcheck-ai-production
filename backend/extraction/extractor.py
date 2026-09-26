@@ -12,6 +12,9 @@ from ocr.repair import (
     repair_date,
     repair_batch_number
 )
+from integrations.fssai.state_codes import decode_fssai_licence
+from integrations.gs1.prefix_catalog import decode_gs1_gtin
+from integrations.postal.pin_decoder import decode_pin_code
 
 class LocalExtractor:
     """
@@ -110,6 +113,15 @@ class LocalExtractor:
                     info['fssai_license'] = val
                     confidences['fssai_license'] = 92.0
                     _record_candidate('fssai_license', val, val, 92.0, method="REGEX_ANCHOR", v_status="FOUND")
+
+        # Decode FSSAI state, license type, and registration year
+        if info.get('fssai_license'):
+            dec_fssai = decode_fssai_licence(info['fssai_license'])
+            if dec_fssai:
+                info['fssai_decoded_state'] = dec_fssai.get('state_name')
+                info['fssai_license_type'] = dec_fssai.get('license_type')
+                info['fssai_registration_year'] = dec_fssai.get('registration_year')
+                confidences['fssai_decoded_state'] = 94.0
 
         # -------------------------------------------------------------
         # 2. Net Quantity / Net Weight (Contextually Anchored & Serving-Excluding)
@@ -832,8 +844,59 @@ class LocalExtractor:
             confidences['barcode_detected'] = 90.0
             field_status['barcode_detected'] = "FOUND"
             _record_candidate('barcode_detected', info['barcode_detected'], info['barcode_detected'], 90.0, method="DIRECT_OCR", v_status="FOUND")
+            # Decode GS1 prefix country of origin
+            dec_gtin = decode_gs1_gtin(info['barcode_detected'])
+            if dec_gtin:
+                info['barcode_origin_country'] = dec_gtin.get('country_name')
+                info['barcode_prefix'] = dec_gtin.get('prefix')
+                confidences['barcode_origin_country'] = 90.0
+                # Fallback: If country of origin is not explicitly stated in label text, derive from barcode prefix
+                if not info.get('country_of_origin') or field_status.get('country_of_origin') == "NOT_FOUND":
+                    info['country_of_origin'] = dec_gtin.get('country_name')
+                    confidences['country_of_origin'] = 88.0
+                    field_status['country_of_origin'] = "FOUND"
+                    _record_candidate('country_of_origin', dec_gtin['country_name'], dec_gtin['country_name'], 88.0, method="DERIVED_FROM_BARCODE", v_status="FOUND")
         else:
             field_status['barcode_detected'] = "NOT_FOUND"
+
+        # -------------------------------------------------------------
+        # 9B. Universal Postal PIN Code Intelligence (Works on ANY Product)
+        # -------------------------------------------------------------
+        all_addr_text = " ".join(filter(None, [
+            info.get('manufacturer_address'),
+            info.get('packer_address'),
+            info.get('marketed_by_address'),
+            info.get('manufacturer'),
+            text
+        ]))
+        pin_res = decode_pin_code(all_addr_text)
+        if pin_res and pin_res.get('pin_code'):
+            info['address_pin_code'] = pin_res['pin_code']
+            info['address_decoded_state'] = pin_res.get('state_name')
+            info['address_decoded_region'] = pin_res.get('region')
+            confidences['address_decoded_state'] = 92.0
+
+        # -------------------------------------------------------------
+        # 9C. Sector-Specific Non-Food Identifiers (BIS / CRS & Cosmetics)
+        # -------------------------------------------------------------
+        if 'bis_license' in PATTERNS:
+            bis_m = PATTERNS['bis_license'].search(text)
+            if bis_m:
+                raw_bis = bis_m.group(1).strip()
+                clean_bis = raw_bis if raw_bis.upper().startswith('R-') else f"R-{raw_bis}"
+                info['bis_license'] = clean_bis
+                confidences['bis_license'] = 92.0
+                field_status['bis_license'] = "FOUND"
+                _record_candidate('bis_license', clean_bis, clean_bis, 92.0, method="REGEX_ANCHOR", v_status="FOUND")
+
+        if 'cosmetic_license' in PATTERNS:
+            cos_m = PATTERNS['cosmetic_license'].search(text)
+            if cos_m:
+                raw_cos = cos_m.group(1).strip()
+                info['cosmetic_license'] = raw_cos
+                confidences['cosmetic_license'] = 90.0
+                field_status['cosmetic_license'] = "FOUND"
+                _record_candidate('cosmetic_license', raw_cos, raw_cos, 90.0, method="REGEX_ANCHOR", v_status="FOUND")
 
         # -------------------------------------------------------------
         # 10. Nutrition Information Panel & Facts

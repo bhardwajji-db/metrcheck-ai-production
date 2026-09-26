@@ -71,7 +71,7 @@ def test_04_production_with_strong_secret_accepted():
     """Production mode with strong 32+ character secret is accepted."""
     _ensure_test_isolation()
     strong_secret = "c7e8a912b45f60d3e1f2a3b4c5d6e7f809123456789abcdef0123456789abcde"
-    s = Settings(ENVIRONMENT="production", SECRET_KEY=strong_secret, TEST_MODE=False)
+    s = Settings(ENVIRONMENT="production", SECRET_KEY=strong_secret, CORS_ORIGINS=["https://app.metrcheck.ai"], TEST_MODE=False)
     assert s.SECRET_KEY == strong_secret
     assert s.ENVIRONMENT == "production"
 

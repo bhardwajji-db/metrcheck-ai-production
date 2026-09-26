@@ -21,8 +21,8 @@ from pathlib import Path
 
 # ─── Path helpers ─────────────────────────────────────────────────────────────
 
-PROJECT_ROOT = Path("d:/SIH/Legal Metrology Compliance AI Prototype")
-BACKEND_ROOT = PROJECT_ROOT / "backend"
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BACKEND_ROOT.parent
 
 
 def read_backend(rel_path: str) -> str:

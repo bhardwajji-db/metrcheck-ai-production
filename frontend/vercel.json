@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://omsainikaul-metrcheck-ai.hf.space/api/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

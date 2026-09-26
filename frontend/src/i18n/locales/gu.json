@@ -501,7 +501,10 @@
     "primary_package_view": "પ્રાથમિક પેકેજ દૃશ્ય",
     "secondary_package_view": "દ્વિતીય પેકેજ દૃશ્ય",
     "switch_panel": "પેનલ બદલો",
-    "loading_preview": "પેકેજ પૂર્વાવલોકન લોડ થઈ રહ્યું છે..."
+    "loading_preview": "પેકેજ પૂર્વાવલોકન લોડ થઈ રહ્યું છે...",
+    "issues_and_missing_docket": "પાલન ખામીઓ અને ખૂટતી ઘોષણાઓ ડોકેટ",
+    "issues_subtitle": "વૈધાનિક બિન-પાલન, ખૂટતા ફરજિયાત ઘટકો અને લાલ બોક્સ દ્રશ્ય પુરાવા.",
+    "view_evidence_red_box": "પુરાવો જુઓ (લાલ બોક્સ)"
   },
   "evidence": {
     "title": "દ્રશ્ય અને સિમેન્ટિક પુરાવા શૃંખલા",

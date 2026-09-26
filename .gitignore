@@ -46,9 +46,11 @@ backend/uploads/
 .env
 .env.*
 !.env.example
+!.env.production.example
 frontend/.env.development
 frontend/.env.production
 gh-device.json
+.agents/
 
 # IDE / Editor
 .vscode/

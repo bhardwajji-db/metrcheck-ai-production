@@ -15,6 +15,7 @@ from models.verification_schemas import (
 )
 from integrations.fssai.schemas import FSSAIVerificationRecord, FSSAIVerificationStatus
 from integrations.gs1.schemas import GS1VerificationRecord, GS1VerificationStatus
+from integrations.fssai.state_codes import INDIA_FSSAI_STATE_CODES
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -370,6 +371,226 @@ class CrossCheckEngine:
 
         return results
 
+    def check_fssai_state_consistency(
+        self,
+        fssai_record: Optional[FSSAIVerificationRecord],
+        extracted_address: Optional[str],
+        address_decoded_state: Optional[str] = None
+    ) -> CrossCheckFieldResult:
+        """
+        Cross-checks FSSAI 14-digit licence registered state code against
+        the extracted manufacturer address and postal PIN circle.
+        """
+        field = "fssai_state"
+        if not fssai_record or not fssai_record.licence_number or fssai_record.status == FSSAIVerificationStatus.NOT_APPLICABLE:
+            return CrossCheckFieldResult(
+                check_type="FSSAI_STATE_CONSISTENCY",
+                field_name=field,
+                extracted_value=extracted_address or address_decoded_state,
+                registry_value=None,
+                status=CrossCheckStatus.NOT_APPLICABLE,
+                similarity_score=0.0,
+                discrepancy_details="No FSSAI licence present on package for state cross-referencing."
+            )
+
+        fssai_state = getattr(fssai_record, 'decoded_state', None)
+        state_code = getattr(fssai_record, 'state_code', None)
+
+        if not fssai_state:
+            return CrossCheckFieldResult(
+                check_type="FSSAI_STATE_CONSISTENCY",
+                field_name=field,
+                extracted_value=extracted_address or address_decoded_state,
+                registry_value=None,
+                status=CrossCheckStatus.UNVERIFIED,
+                similarity_score=0.0,
+                discrepancy_details="FSSAI licence state code could not be determined."
+            )
+
+        # Central Licensing Authority is valid nationwide across India
+        if "Central" in fssai_state or state_code in ("00", "99"):
+            return CrossCheckFieldResult(
+                check_type="FSSAI_STATE_CONSISTENCY",
+                field_name=field,
+                extracted_value=address_decoded_state or extracted_address or "Pan-India",
+                registry_value="Central License (All India)",
+                status=CrossCheckStatus.MATCH,
+                similarity_score=1.0,
+                discrepancy_details="FSSAI Central Licensing Authority license is valid across all Indian States and Union Territories."
+            )
+
+        combined_addr = f"{extracted_address or ''} {address_decoded_state or ''}".lower()
+        if not combined_addr.strip():
+            return CrossCheckFieldResult(
+                check_type="FSSAI_STATE_CONSISTENCY",
+                field_name=field,
+                extracted_value=None,
+                registry_value=fssai_state,
+                status=CrossCheckStatus.UNVERIFIED,
+                similarity_score=0.0,
+                discrepancy_details=f"FSSAI registered in {fssai_state} (Code {state_code}). Package address lacks explicit location text for confirmation."
+            )
+
+        state_meta = INDIA_FSSAI_STATE_CODES.get(state_code or "", {})
+        state_name_lower = fssai_state.lower()
+        state_abbr_lower = state_meta.get("abbr", "").lower()
+        cities = [c.lower() for c in state_meta.get("cities", [])]
+
+        # 1. Direct state name or abbreviation match
+        matches_state = (
+            state_name_lower in combined_addr or
+            (len(state_abbr_lower) >= 2 and re.search(rf'\b{re.escape(state_abbr_lower)}\b', combined_addr)) or
+            any(city in combined_addr for city in cities)
+        )
+
+        if matches_state:
+            return CrossCheckFieldResult(
+                check_type="FSSAI_STATE_CONSISTENCY",
+                field_name=field,
+                extracted_value=address_decoded_state or extracted_address,
+                registry_value=f"{fssai_state} (Code {state_code})",
+                status=CrossCheckStatus.MATCH,
+                similarity_score=1.0,
+                discrepancy_details=f"FSSAI registered state '{fssai_state}' (Code {state_code}) aligns with manufacturer address location."
+            )
+
+        # 2. Check if address explicitly declares another distinct state
+        conflicting_states = []
+        for other_code, other_meta in INDIA_FSSAI_STATE_CODES.items():
+            if other_code in (state_code, "00", "99"):
+                continue
+            other_name = other_meta["name"].lower()
+            other_abbr = other_meta.get("abbr", "").lower()
+            if other_name in combined_addr or (len(other_abbr) >= 2 and re.search(rf'\b{re.escape(other_abbr)}\b', combined_addr)):
+                conflicting_states.append(other_meta["name"])
+
+        if conflicting_states:
+            other_st_str = ", ".join(conflicting_states[:2])
+            return CrossCheckFieldResult(
+                check_type="FSSAI_STATE_CONSISTENCY",
+                field_name=field,
+                extracted_value=other_st_str,
+                registry_value=f"{fssai_state} (Code {state_code})",
+                status=CrossCheckStatus.MISMATCH,
+                similarity_score=0.0,
+                discrepancy_details=f"Location Discrepancy: FSSAI licence registered in {fssai_state} (Code {state_code}), but package specifies {other_st_str}.",
+                is_critical_mismatch=True
+            )
+
+        return CrossCheckFieldResult(
+            check_type="FSSAI_STATE_CONSISTENCY",
+            field_name=field,
+            extracted_value=extracted_address,
+            registry_value=f"{fssai_state} (Code {state_code})",
+            status=CrossCheckStatus.UNVERIFIED,
+            similarity_score=0.5,
+            discrepancy_details=f"FSSAI licence registered in {fssai_state} (Code {state_code}). Detailed state verification recommended."
+        )
+
+    def check_barcode_origin_consistency(
+        self,
+        gs1_record: Optional[GS1VerificationRecord],
+        extracted_country: Optional[str],
+        barcode_detected: Optional[str] = None
+    ) -> CrossCheckFieldResult:
+        """
+        Cross-checks GS1 Member Organization prefix country of origin
+        against the declared Country of Origin text on the label.
+        Universal across ALL packaged commodities.
+        """
+        field = "country_of_origin"
+        barcode_country = getattr(gs1_record, 'origin_country', None) if gs1_record else None
+        prefix = getattr(gs1_record, 'prefix', None) if gs1_record else None
+
+        if not barcode_country:
+            return CrossCheckFieldResult(
+                check_type="BARCODE_ORIGIN_CONSISTENCY",
+                field_name=field,
+                extracted_value=extracted_country,
+                registry_value=None,
+                status=CrossCheckStatus.NOT_APPLICABLE,
+                similarity_score=0.0,
+                discrepancy_details="No GS1 barcode prefix available for origin cross-referencing."
+            )
+
+        clean_ext = (extracted_country or "").strip()
+        if not clean_ext:
+            return CrossCheckFieldResult(
+                check_type="BARCODE_ORIGIN_CONSISTENCY",
+                field_name=field,
+                extracted_value=None,
+                registry_value=f"{barcode_country} (Prefix {prefix})",
+                status=CrossCheckStatus.MATCH,
+                similarity_score=0.90,
+                discrepancy_details=f"Country of Origin inferred as {barcode_country} from GS1 barcode prefix {prefix}."
+            )
+
+        c_lower = clean_ext.lower()
+        b_lower = barcode_country.lower()
+
+        is_match = False
+        if ("india" in c_lower or "bharat" in c_lower) and b_lower == "india":
+            is_match = True
+        elif c_lower in b_lower or b_lower in c_lower:
+            is_match = True
+
+        if is_match:
+            return CrossCheckFieldResult(
+                check_type="BARCODE_ORIGIN_CONSISTENCY",
+                field_name=field,
+                extracted_value=clean_ext,
+                registry_value=f"{barcode_country} (Prefix {prefix})",
+                status=CrossCheckStatus.MATCH,
+                similarity_score=1.0,
+                discrepancy_details=f"Declared Country of Origin '{clean_ext}' matches GS1 barcode origin ({barcode_country}, prefix {prefix})."
+            )
+
+        return CrossCheckFieldResult(
+            check_type="BARCODE_ORIGIN_CONSISTENCY",
+            field_name=field,
+            extracted_value=clean_ext,
+            registry_value=f"{barcode_country} (Prefix {prefix})",
+            status=CrossCheckStatus.MISMATCH,
+            similarity_score=0.0,
+            discrepancy_details=f"Origin Mismatch: Barcode prefix {prefix} indicates {barcode_country}, but package declares '{clean_ext}'.",
+            is_critical_mismatch=True
+        )
+
+    def check_pin_state_consistency(
+        self,
+        address_pin_code: Optional[str],
+        address_decoded_state: Optional[str],
+        extracted_address: Optional[str]
+    ) -> CrossCheckFieldResult:
+        """
+        Cross-checks postal PIN code region against extracted address text.
+        Universal across ANY product category (Food, Electronics, Cosmetics).
+        """
+        field = "postal_location"
+        if not address_pin_code or not address_decoded_state:
+            return CrossCheckFieldResult(
+                check_type="PIN_LOCATION_CONSISTENCY",
+                field_name=field,
+                extracted_value=extracted_address,
+                registry_value=None,
+                status=CrossCheckStatus.NOT_APPLICABLE,
+                similarity_score=0.0,
+                discrepancy_details="No Indian postal PIN code detected in package address."
+            )
+
+        addr_text = (extracted_address or "").lower()
+        state_match = address_decoded_state.lower() in addr_text or (address_pin_code in addr_text)
+
+        return CrossCheckFieldResult(
+            check_type="PIN_LOCATION_CONSISTENCY",
+            field_name=field,
+            extracted_value=extracted_address or address_pin_code,
+            registry_value=f"{address_decoded_state} (PIN {address_pin_code})",
+            status=CrossCheckStatus.MATCH if state_match else CrossCheckStatus.PARTIAL_MATCH,
+            similarity_score=1.0 if state_match else 0.70,
+            discrepancy_details=f"Postal PIN {address_pin_code} decodes to {address_decoded_state}."
+        )
+
     def compute_verification_confidence(
         self,
         fssai_record: Optional[FSSAIVerificationRecord],
@@ -495,7 +716,24 @@ class CrossCheckEngine:
             cross_checks.extend(qr_checks)
             sources.append("OPENCV_SAFE_QR_DETECTOR")
 
-        # 5. Determine Overall Consistency Status
+        # 5. FSSAI State ↔ Manufacturer Address Cross-Check
+        pin_state = extracted_data.get("address_decoded_state")
+        fssai_state_check = self.check_fssai_state_consistency(fssai_record, ext_addr, pin_state)
+        cross_checks.append(fssai_state_check)
+
+        # 6. Barcode Origin ↔ Country of Origin Cross-Check (Universal)
+        ext_country = extracted_data.get("country_of_origin")
+        barcode_origin_check = self.check_barcode_origin_consistency(gs1_record, ext_country, barcode_detected)
+        cross_checks.append(barcode_origin_check)
+
+        # 7. Postal PIN ↔ Address Consistency (Universal for ANY Product)
+        pin_code = extracted_data.get("address_pin_code")
+        if pin_code and pin_state:
+            pin_check = self.check_pin_state_consistency(pin_code, pin_state, ext_addr)
+            cross_checks.append(pin_check)
+            sources.append("INDIA_POSTAL_PIN_DIRECTORY")
+
+        # 8. Determine Overall Consistency Status
         statuses = [c.status for c in cross_checks if c.status != CrossCheckStatus.NOT_APPLICABLE]
         discrepancies = [c.discrepancy_details for c in cross_checks if c.discrepancy_details and c.status in (CrossCheckStatus.MISMATCH, CrossCheckStatus.NOT_FOUND)]
 

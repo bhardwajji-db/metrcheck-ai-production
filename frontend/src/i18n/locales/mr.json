@@ -501,7 +501,10 @@
     "primary_package_view": "प्राथमिक पॅकेज दृश्य",
     "secondary_package_view": "दुय्यम पॅकेज दृश्य",
     "switch_panel": "पॅनेल बदला",
-    "loading_preview": "पॅकेज पूर्वावलोकन लोड होत आहे..."
+    "loading_preview": "पॅकेज पूर्वावलोकन लोड होत आहे...",
+    "issues_and_missing_docket": "अनुपालन त्रुटी व गहाळ घोषणा डॉकेट",
+    "issues_subtitle": "वैधानिक गैर-अनुपालन, गहाळ अनिवार्य घटक आणि लाल बॉक्स दृश्य पुरावा.",
+    "view_evidence_red_box": "पुरावा पहा (लाल बॉक्स)"
   },
   "evidence": {
     "title": "दृश्य आणि सिमेंटिक पुरावा साखळी",

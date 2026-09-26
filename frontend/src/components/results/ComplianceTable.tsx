@@ -30,7 +30,9 @@ const ComplianceTable: React.FC<ComplianceTableProps> = ({
         
       const matchesStatus = statusFilter === 'All' || check.status === statusFilter;
       const matchesDomain = domainFilter === 'All' || (
-        domainFilter === 'FSSAI' ? check.rule_id.startsWith('FSSAI') : !check.rule_id.startsWith('FSSAI')
+        domainFilter === 'FSSAI' 
+          ? (check.rule_id.startsWith('FS-') || check.rule_id.startsWith('FSSAI')) 
+          : (!check.rule_id.startsWith('FS-') && !check.rule_id.startsWith('FSSAI'))
       );
 
       return matchesSearch && matchesStatus && matchesDomain;

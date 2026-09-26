@@ -15,6 +15,8 @@ class GS1VerificationRecord(BaseModel):
     gtin: Optional[str] = None
     status: GS1VerificationStatus = GS1VerificationStatus.NOT_VERIFIED
     provider: str = "GS1 India DataKart / Verified Registry Provider"
+    origin_country: Optional[str] = None
+    prefix: Optional[str] = None
     brand_name: Optional[str] = None
     product_description: Optional[str] = None
     company_name: Optional[str] = None
