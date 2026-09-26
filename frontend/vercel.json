@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://diwakarbhardwaj-metrcheck-ai.hf.space/api/$1"
+      "destination": "https://bhardwaj001-metrcheck-ai.hf.space/api/$1"
     },
     {
       "source": "/(.*)",

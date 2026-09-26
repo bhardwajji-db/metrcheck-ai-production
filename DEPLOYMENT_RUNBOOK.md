@@ -44,13 +44,13 @@
 ## 3. Production URLs & Endpoints
 
 - **Public Production Web Application**:  
-  `https://diwakarbhardwaj-metrcheck-ai.hf.space`
+  `https://bhardwaj001-metrcheck-ai.hf.space`
 - **Backend API Base**:  
-  `https://diwakarbhardwaj-metrcheck-ai.hf.space/api`
+  `https://bhardwaj001-metrcheck-ai.hf.space/api`
 - **Health Check**:  
-  `https://diwakarbhardwaj-metrcheck-ai.hf.space/api/health`
+  `https://bhardwaj001-metrcheck-ai.hf.space/api/health`
 - **API Documentation (Swagger UI)**:  
-  `https://diwakarbhardwaj-metrcheck-ai.hf.space/docs`
+  `https://bhardwaj001-metrcheck-ai.hf.space/docs`
 - **GitHub Repository**:  
   `https://github.com/omsainikaul/metrcheck-ai.git` (Branch: `main`)
 
