@@ -15,7 +15,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
       - METRCHECK_DEMO_MODE=${METRCHECK_DEMO_MODE:-}
-      - DATABASE_PATH=${DATABASE_PATH:-/data/metrc_check.db}
+      - DATABASE_PATH=${DATABASE_PATH:-/data/metrcheck.db}
       - UPLOAD_DIR=${UPLOAD_DIR:-/data/uploads}
       - OCR_ENGINE=${OCR_ENGINE:-paddleocr}
       - RATE_LIMIT_BACKEND=${RATE_LIMIT_BACKEND:-sqlite}
