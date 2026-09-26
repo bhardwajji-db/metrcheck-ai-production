@@ -1,7 +1,9 @@
 services:
   - type: web
     name: metrcheck-ai
-    runtime: docker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     region: frankfurt
     branch: main
