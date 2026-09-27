@@ -78,14 +78,17 @@ RUN rm -f /etc/nginx/sites-enabled/default
 # Runtime configuration
 # ------------------------------------------------------------
 ENV PYTHONUNBUFFERED=1 \
-    MALLOC_ARENA_MAX=2 \
+    MALLOC_ARENA_MAX=1 \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     PADDLE_NUM_THREADS=1 \
+    FLAGS_initial_cpu_memory_in_mb=16 \
     FLAGS_allocator_strategy=naive_best_fit \
     FLAGS_fraction_of_cpu_memory_to_use=0.05 \
     FLAGS_eager_delete_tensor_gb=0.0 \
+    FLAGS_fast_eager_deletion_mode=1 \
+    FLAGS_memory_fraction_of_eager_deletion=1.0 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
     OCR_ENGINE=paddleocr \
     UPLOAD_DIR=/data/uploads \

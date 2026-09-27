@@ -1,4 +1,18 @@
 import os
+
+# Strict Linux container memory limits for 512MB RAM cloud tiers
+os.environ["FLAGS_initial_cpu_memory_in_mb"] = "16"
+os.environ["FLAGS_fraction_of_cpu_memory_to_use"] = "0.05"
+os.environ["FLAGS_allocator_strategy"] = "naive_best_fit"
+os.environ["FLAGS_eager_delete_tensor_gb"] = "0.0"
+os.environ["FLAGS_fast_eager_deletion_mode"] = "1"
+os.environ["FLAGS_memory_fraction_of_eager_deletion"] = "1.0"
+os.environ["MALLOC_ARENA_MAX"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["PADDLE_NUM_THREADS"] = "1"
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
