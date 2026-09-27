@@ -122,6 +122,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                 use_doc_unwarping=False,
                 use_doc_orientation_classify=False,
                 use_textline_orientation=False,
+                enable_mkldnn=False,
+                cpu_threads=1,
                 text_recognition_batch_size=1,
                 det_limit_side_len=960
             )
@@ -132,6 +134,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                     use_doc_unwarping=False,
                     use_doc_orientation_classify=False,
                     use_textline_orientation=False,
+                    enable_mkldnn=False,
+                    cpu_threads=1,
                     text_recognition_batch_size=1,
                     det_limit_side_len=960
                 )
@@ -148,46 +152,7 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                             return _init_paddle_ocr(lang="en", use_angle_cls=use_angle_cls)
                         raise err
 
-        # Configure C++ Paddle Inference Predictors for DBNet and SVTR with optimal oneDNN and threading
-        try:
-            if hasattr(instance, "paddlex_pipeline") and hasattr(instance.paddlex_pipeline, "_pipeline"):
-                pipe = instance.paddlex_pipeline._pipeline
-                # Single-thread execution to strictly comply with OpenBlas and prevent memory overhead
-                optimal_threads = 1
 
-                # 1. DBNet Text Detection: CPU threads = 6, MKLDNN disabled (DBNet PIR limitation)
-                if hasattr(pipe, "text_det_model") and hasattr(pipe.text_det_model, "runner"):
-                    runner_det = pipe.text_det_model.runner
-                    m_file_d = runner_det.model_dir / f"{runner_det.model_file_prefix}.json"
-                    p_file_d = runner_det.model_dir / f"{runner_det.model_file_prefix}.pdiparams"
-                    if m_file_d.exists() and p_file_d.exists():
-                        cfg_det = paddle_infer.Config(str(m_file_d), str(p_file_d))
-                        cfg_det.disable_gpu()
-                        cfg_det.disable_mkldnn()
-                        cfg_det.set_cpu_math_library_num_threads(optimal_threads)
-                        cfg_det.disable_glog_info()
-                        runner_det.predictor = paddle_infer.create_predictor(cfg_det)
-                        runner_det.infer = type(runner_det.infer)(runner_det.predictor)
-
-                # 2. SVTR Text Recognition: oneDNN enabled, CPU threads = 6, batch_size = 1
-                if hasattr(pipe, "text_rec_model"):
-                    if hasattr(pipe.text_rec_model, "batch_sampler"):
-                        pipe.text_rec_model.batch_sampler.batch_size = 1
-                    if hasattr(pipe.text_rec_model, "runner"):
-                        runner_rec = pipe.text_rec_model.runner
-                        m_file_r = runner_rec.model_dir / f"{runner_rec.model_file_prefix}.json"
-                        p_file_r = runner_rec.model_dir / f"{runner_rec.model_file_prefix}.pdiparams"
-                        if m_file_r.exists() and p_file_r.exists():
-                            cfg_rec = paddle_infer.Config(str(m_file_r), str(p_file_r))
-                            cfg_rec.disable_gpu()
-                            cfg_rec.disable_mkldnn()
-                            cfg_rec.set_cpu_math_library_num_threads(optimal_threads)
-                            cfg_rec.disable_glog_info()
-                            runner_rec.predictor = paddle_infer.create_predictor(cfg_rec)
-                            runner_rec.infer = type(runner_rec.infer)(runner_rec.predictor)
-
-        except Exception as e:
-            logger.debug(f"[OCR] Predictor optimization fallback: {e}")
 
         t_load = (time.perf_counter() - t_load0) * 1000
         _MODEL_LOAD_STATS["model_load_count"] += 1
