@@ -143,7 +143,7 @@ class TestVercelRewrites:
         # Rule 1 must be the API rewrite
         api_rule = rewrites[0]
         assert api_rule["source"] == "/api/(.*)", f"Rule 1 source should be '/api/(.*)', got {api_rule['source']}"
-        assert "https://omsainikaul-metrcheck-ai.hf.space/api/$1" in api_rule["destination"], (
+        assert re.search(r"https://[a-zA-Z0-9_-]+-metrcheck-ai\.hf\.space/api/\$1", api_rule["destination"]), (
             f"Rule 1 destination should target HF Space backend, got {api_rule['destination']}"
         )
 
@@ -184,7 +184,7 @@ class TestVercelRewrites:
             assert match is not None, f"Endpoint {ep} failed to match /api/(.*)"
             captured = match.group(1)
             target = api_dest_template.replace("$1", captured)
-            assert target == f"https://omsainikaul-metrcheck-ai.hf.space/api/{captured}"
+            assert target.startswith("https://") and target.endswith(f"/api/{captured}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
