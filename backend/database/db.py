@@ -9,13 +9,42 @@ from typing import Optional, List, Dict, Any, Tuple
 from config import settings, PROD_DATABASE_PATH
 
 
-def _check_safety_guard():
+def _is_cloud_production_path(path: str) -> bool:
+    """
+    Determine whether a given filesystem path corresponds to a production
+    cloud volume storage location (e.g. Hugging Face Spaces / Docker /data mount).
+    """
+    if not path:
+        return False
+    norm = os.path.normpath(str(path)).replace("\\", "/")
+    while norm.startswith("//"):
+        norm = norm[1:]
+    norm_lower = norm.lower()
+    # Strip Windows drive letter if present (e.g. 'c:/data/...' -> '/data/...')
+    if len(norm_lower) >= 2 and norm_lower[1] == ":" and norm_lower[0].isalpha():
+        norm_lower = norm_lower[2:]
+    return norm_lower == "/data" or norm_lower.startswith("/data/")
+
+
+def _check_safety_guard(db_path: Optional[str] = None):
+    """
+    Safety guard preventing automated tests from running against or mutating
+    the production/development database, cloud volume databases (/data/metrcheck.db),
+    or databases in active production environments.
+    """
     is_pytest = "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
     if settings.TEST_MODE or os.environ.get("TEST_MODE") == "1" or is_pytest:
-        resolved_db = os.path.abspath(settings.DATABASE_PATH)
-        if resolved_db == PROD_DATABASE_PATH:
+        target_path = db_path if db_path is not None else settings.DATABASE_PATH
+        resolved_db = os.path.abspath(target_path)
+        is_cloud_prod = _is_cloud_production_path(target_path) or _is_cloud_production_path(resolved_db)
+        is_prod_env = (
+            os.environ.get("ENVIRONMENT") == "production"
+            or os.environ.get("METRCHECK_ENV") == "production"
+            or getattr(settings, "ENVIRONMENT", "").lower() == "production"
+        )
+        if resolved_db == PROD_DATABASE_PATH or is_cloud_prod or (is_prod_env and "test" not in os.path.basename(resolved_db).lower()):
             raise RuntimeError(
-                f"SAFETY ERROR: Automated tests cannot run against the production/development database ({PROD_DATABASE_PATH})!\n"
+                f"SAFETY ERROR: Automated tests cannot run against the production/cloud database ({resolved_db})!\n"
                 f"Please ensure tests use isolated_test_env() or conftest with a dedicated temporary database."
             )
 
@@ -2641,6 +2670,10 @@ async def delete_review(review_id: str) -> bool:
         return cursor.rowcount > 0
     finally:
         await db.close()
+
+
+# Alias for backward compatibility with external callers and M4 contract test suites
+list_officer_reviews = list_reviews
 
 
 # ── Section 13: Persistent Verification Cache CRUD ──
