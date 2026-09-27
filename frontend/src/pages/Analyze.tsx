@@ -59,6 +59,58 @@ const MAX_IMAGES = 4;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
+async function optimizeImageForUpload(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || file.size < 400 * 1024) {
+      return resolve(file);
+    }
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX_DIM = 1400;
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+      } else if (file.size < 800 * 1024) {
+        return resolve(file);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(file);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+          const optimizedFile = new File([blob], cleanName, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          resolve(optimizedFile);
+        },
+        'image/jpeg',
+        0.90
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 export default function Analyze() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,6 +136,11 @@ export default function Analyze() {
       return () => { isMounted = false; };
     }
   }, [productId, productName]);
+
+  useEffect(() => {
+    // Pre-warm backend cloud instance if it was asleep
+    api.getHealth().catch(() => {});
+  }, []);
 
   // Dynamic slot localized definitions
   const SLOTS = useMemo(() => [
@@ -504,11 +561,13 @@ export default function Analyze() {
     startPipelineAnimation(false);
 
     try {
-      const payload = stagedItems.map(item => ({
-        file: item.file,
-        label: CANONICAL_SLOT_LABELS[item.key] || 'Front'
-      }));
-      const result = await api.analyzeProducts(payload, productId.trim() ? productId.trim() : undefined);
+      const optimizedPayload = await Promise.all(
+        stagedItems.map(async (item) => ({
+          file: await optimizeImageForUpload(item.file),
+          label: CANONICAL_SLOT_LABELS[item.key] || 'Front'
+        }))
+      );
+      const result = await api.analyzeProducts(optimizedPayload, productId.trim() ? productId.trim() : undefined);
       await finishPipelineAndNavigate(result, false);
     } catch (err: any) {
       if (stageIntervalRef.current) clearInterval(stageIntervalRef.current);

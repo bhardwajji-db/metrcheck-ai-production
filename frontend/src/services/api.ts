@@ -105,8 +105,12 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
         errorMessage = 'Endpoint not found (404). Please ensure the backend server is running.';
       } else if (response.status === 500) {
         errorMessage = 'Internal server error (500). Please try again later.';
+      } else if (response.status === 504) {
+        errorMessage = 'The cloud instance was waking up or processing dense package scans. The server is warm now—please click Retry!';
+      } else if (response.status === 502 || response.status === 503) {
+        errorMessage = 'The server is currently waking up from standby. Please wait a moment and click Retry.';
       } else {
-        errorMessage = `API error: ${response.status} ${response.statusText}`;
+        errorMessage = `API error: ${response.status} ${response.statusText}`.trim();
       }
     }
 
