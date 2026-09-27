@@ -61,14 +61,14 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 async function optimizeImageForUpload(file: File): Promise<File> {
   return new Promise((resolve) => {
-    if (!file.type.startsWith('image/') || file.size < 400 * 1024) {
+    if (!file.type.startsWith('image/')) {
       return resolve(file);
     }
     const img = new window.Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const MAX_DIM = 1400;
+      const MAX_DIM = 960;
       let { width, height } = img;
       if (width > MAX_DIM || height > MAX_DIM) {
         if (width > height) {
@@ -78,7 +78,7 @@ async function optimizeImageForUpload(file: File): Promise<File> {
           width = Math.round((width * MAX_DIM) / height);
           height = MAX_DIM;
         }
-      } else if (file.size < 800 * 1024) {
+      } else {
         return resolve(file);
       }
 
@@ -100,7 +100,7 @@ async function optimizeImageForUpload(file: File): Promise<File> {
           resolve(optimizedFile);
         },
         'image/jpeg',
-        0.90
+        0.88
       );
     };
     img.onerror = () => {

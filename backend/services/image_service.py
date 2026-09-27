@@ -84,14 +84,14 @@ async def process_and_save_image(file: UploadFile, dest_path: str):
             if img.mode in ('RGBA', 'P', 'LA', 'L', 'CMYK'):
                 img = img.convert('RGB')
 
-            # Resize if longest side > 1400px (optimal for fast, sharp OCR and cloud compute)
-            max_size = 1400
+            # Resize if longest side > 960px (native PP-OCRv4 resolution for optimal speed & cloud latency)
+            max_size = 960
             if max(img.size) > max_size:
                 ratio = max_size / max(img.size)
                 new_size = (int(img.width * ratio), int(img.height * ratio))
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-            img.save(contained_dest, format="JPEG", quality=95)
+            img.save(contained_dest, format="JPEG", quality=90)
 
     except (UnidentifiedImageError, OSError, ValueError) as err:
         if os.path.exists(contained_dest):

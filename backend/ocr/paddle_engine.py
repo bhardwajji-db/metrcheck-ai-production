@@ -122,7 +122,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                 use_doc_unwarping=False,
                 use_doc_orientation_classify=False,
                 use_textline_orientation=False,
-                text_recognition_batch_size=1
+                text_recognition_batch_size=1,
+                det_limit_side_len=960
             )
         except Exception:
             try:
@@ -131,7 +132,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                     use_doc_unwarping=False,
                     use_doc_orientation_classify=False,
                     use_textline_orientation=False,
-                    text_recognition_batch_size=1
+                    text_recognition_batch_size=1,
+                    det_limit_side_len=960
                 )
             except Exception:
                 try:
@@ -589,8 +591,8 @@ def _sync_paddle_extract_multiscale(image_path: str, lang: str = "en") -> Tuple[
     has_back_panel_indicators = any(k in raw_text for k in ["NUTRITION", "MARKETED BY", "MANUFACTURED", "FEEDBACK", "ALLERGEN", "FSSAI", "LIC NO"])
     has_front_prominence = any((w.bbox[3] - w.bbox[1]) >= 28 for w in words1) and len(words1) >= 8 and not has_back_panel_indicators
 
-    # If front panel image or all statutory declarations already found in Pass 1, avoid 2nd pass
-    if (has_ingr and has_mrp) or has_front_prominence or (has_ingr and len(words1) >= 25):
+    # If front panel image or statutory declarations/words already found in Pass 1, avoid 2nd pass
+    if len(words1) >= 12 or (has_ingr and has_mrp) or has_front_prominence or (has_ingr and len(words1) >= 8):
         # Reconstruct reading-order geometric lines from accepted words
         words_sorted = sorted(words1, key=lambda w: (w.bbox[1], w.bbox[0]))
         reconstructed_lines: List[str] = []
