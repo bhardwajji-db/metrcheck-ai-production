@@ -180,14 +180,13 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                         if m_file_r.exists() and p_file_r.exists():
                             cfg_rec = paddle_infer.Config(str(m_file_r), str(p_file_r))
                             cfg_rec.disable_gpu()
-                            cfg_rec.enable_mkldnn()
-                            cfg_rec.set_mkldnn_cache_capacity(10)
+                            cfg_rec.disable_mkldnn()
                             cfg_rec.set_cpu_math_library_num_threads(optimal_threads)
                             cfg_rec.disable_glog_info()
                             runner_rec.predictor = paddle_infer.create_predictor(cfg_rec)
                             runner_rec.infer = type(runner_rec.infer)(runner_rec.predictor)
 
-                # 3. Minimal 1-crop startup warmup so oneDNN graph compiles ahead of user requests
+                # 3. Minimal 1-crop startup warmup
                 try:
                     dummy_crop = np.zeros((48, 160, 3), dtype=np.uint8)
                     _ = list(pipe.text_rec_model([dummy_crop]))
@@ -317,9 +316,13 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
                 if not crops:
                     return lines, words, confs
 
-                # 5. SVTR Text Recognition with batch_size=1
+                # 5. SVTR Text Recognition with chunked batches to keep RAM strictly bounded
                 inner_pipe.text_rec_model.batch_sampler.batch_size = 1
-                rec_res = list(inner_pipe.text_rec_model(crops))
+                rec_res = []
+                CHUNK_SIZE = 16
+                for c_idx in range(0, len(crops), CHUNK_SIZE):
+                    c_batch = crops[c_idx:c_idx + CHUNK_SIZE]
+                    rec_res.extend(list(inner_pipe.text_rec_model(c_batch)))
 
                 # 6. Parse recognized texts and generate OCRWords with proportional sub-boxes
                 for b, r in zip(grouped_boxes, rec_res):
