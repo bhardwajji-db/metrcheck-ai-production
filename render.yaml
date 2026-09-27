@@ -22,3 +22,5 @@ services:
         value: /data/metrcheck.db
       - key: UPLOAD_DIR
         value: /data/uploads
+      - key: CORS_ORIGINS
+        value: "https://metrcheck-ai-d6cx.onrender.com,https://metrcheck-ai.onrender.com,https://bhardwaj001-metrcheck-ai.hf.space,http://localhost:5173,http://localhost:3000"
