@@ -84,8 +84,8 @@ async def process_and_save_image(file: UploadFile, dest_path: str):
             if img.mode in ('RGBA', 'P', 'LA', 'L', 'CMYK'):
                 img = img.convert('RGB')
 
-            # Resize if longest side > 960px (native PP-OCRv4 resolution for optimal speed & cloud latency)
-            max_size = 960
+            # Resize if longest side > 768px (optimal speed & low-memory cloud execution)
+            max_size = 768
             if max(img.size) > max_size:
                 ratio = max_size / max(img.size)
                 new_size = (int(img.width * ratio), int(img.height * ratio))

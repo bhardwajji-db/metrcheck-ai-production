@@ -57,8 +57,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
 
-# Pre-cache PaddleOCR PP-OCRv4 models into the image so runtime startup is instant and network-free
-RUN python -c "import os; os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK']='True'; from ocr.paddle_engine import _init_paddle_ocr; _init_paddle_ocr('en')" || true \
+# Pre-cache PaddleOCR PP-OCRv4 models and verify inference during build
+RUN python -c "import os, numpy as np, cv2; os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK']='True'; from ocr.paddle_engine import _sync_paddle_extract; img = np.full((100, 300, 3), 255, dtype=np.uint8); cv2.putText(img, 'TEST OCR', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2); cv2.imwrite('/tmp/test_build.png', img); lines, words, confs = _sync_paddle_extract('/tmp/test_build.png'); print('BUILD-TIME INFERENCE VERIFIED:', lines); assert len(words) > 0" \
     && chmod -R 777 /home/user
 
 # ------------------------------------------------------------
@@ -78,6 +78,7 @@ RUN rm -f /etc/nginx/sites-enabled/default
 # Runtime configuration
 # ------------------------------------------------------------
 ENV PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2 \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
@@ -93,4 +94,4 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 7860
 
 # Start FastAPI and Nginx in the same container, dynamically adapting Nginx port to $PORT (Render/HF)
-CMD ["bash", "-c", "export PORT=${PORT:-7860}; sed -i \"s/listen [0-9]*;/listen $PORT;/\" /etc/nginx/conf.d/default.conf; uvicorn main:app --host 127.0.0.1 --port 8000 & backend_pid=$!; for i in $(seq 1 20); do curl -s -f http://127.0.0.1:8000/api/health >/dev/null 2>&1 && break || sleep 0.5; done; nginx -g 'daemon off;' & nginx_pid=$!; trap 'kill $backend_pid $nginx_pid 2>/dev/null || true' SIGTERM SIGINT; wait -n $backend_pid $nginx_pid; status=$?; kill $backend_pid $nginx_pid 2>/dev/null || true; exit $status"]
+CMD ["bash", "-c", "export PORT=${PORT:-7860}; sed -i \"s/listen [0-9]*;/listen $PORT;/\" /etc/nginx/conf.d/default.conf; uvicorn main:app --host 127.0.0.1 --port 8000 & backend_pid=$!; for i in $(seq 1 20); do curl -s -f http://127.0.0.1:8000/api/health >/dev/null 2>&1 && break || sleep 0.5; done; nginx -g 'daemon off;' & nginx_pid=$!; trap 'kill $backend_pid $nginx_pid 2>/dev/null || true' SIGTERM SIGINT; wait -n $backend_pid $nginx_pid; status=$?; echo \"===> PROCESS EXITED WITH STATUS: $status\"; kill $backend_pid $nginx_pid 2>/dev/null || true; exit $status"]

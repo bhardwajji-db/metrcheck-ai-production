@@ -137,6 +137,11 @@ async def analyze_products(
 
         # Explicitly release image tensors, intermediate crop buffers, and trigger garbage collection
         gc.collect()
+        try:
+            import ctypes
+            ctypes.CDLL('libc.so.6').malloc_trim(0)
+        except Exception:
+            pass
 
     t_ocr_all = (time.perf_counter() - t_ocr_all0) * 1000
     logger.info(f"[PERF] Combined OCR & Vision Phase: {t_ocr_all:.1f} ms")
