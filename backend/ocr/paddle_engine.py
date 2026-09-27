@@ -31,11 +31,12 @@ logger = logging.getLogger(__name__)
 os.environ.setdefault("FLAGS_enable_pir_api", "0")
 os.environ.setdefault("FLAGS_enable_onednn", "0")
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
-# paddlex 3.x defaults ENABLE_MKLDNN_BYDEFAULT=True and unconditionally builds
-# an OneDNN (mkldnn) inference graph whose PIR->runtime conversion crashes on
-# paddle 3.3 Windows ("ConvertPirAttribute2RuntimeAttribute ... not support ...
-# onednn_instruction.cc:118"). Disable it so run_mode falls back to plain CPU.
 os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("PADDLE_NUM_THREADS", "1")
 
 import threading
 
@@ -149,24 +150,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
         try:
             if hasattr(instance, "paddlex_pipeline") and hasattr(instance.paddlex_pipeline, "_pipeline"):
                 pipe = instance.paddlex_pipeline._pipeline
-                # Adaptive thread allocation honoring container cgroups quota to prevent CFS throttling
-                optimal_threads = 2
-                try:
-                    if os.path.exists("/sys/fs/cgroup/cpu.max"):
-                        with open("/sys/fs/cgroup/cpu.max") as f:
-                            q, p = f.read().split()
-                            if q != "max":
-                                optimal_threads = max(1, min(int(round(float(q) / float(p))), 4))
-                    elif os.path.exists("/sys/fs/cgroup/cpu/cpu.cfs_quota_us"):
-                        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f_q, open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f_p:
-                            q_val = float(f_q.read().strip())
-                            p_val = float(f_p.read().strip())
-                            if q_val > 0:
-                                optimal_threads = max(1, min(int(round(q_val / p_val)), 4))
-                    else:
-                        optimal_threads = min(max((os.cpu_count() or 2) // 2, 1), 4)
-                except Exception:
-                    optimal_threads = 2
+                # Single-thread execution to strictly comply with OpenBlas and prevent memory overhead
+                optimal_threads = 1
 
                 # 1. DBNet Text Detection: CPU threads = 6, MKLDNN disabled (DBNet PIR limitation)
                 if hasattr(pipe, "text_det_model") and hasattr(pipe.text_det_model, "runner"):

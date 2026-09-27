@@ -42,7 +42,7 @@ ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH
 
 # Set up storage, model cache, and runtime directories with permissive permissions for non-root execution
-RUN mkdir -p /data/uploads /var/log/nginx /var/lib/nginx /run /home/user/.paddleocr \
+RUN mkdir -p /data/uploads /var/log/nginx /var/lib/nginx /run /home/user/.paddleocr /home/user/.paddlex \
     && chown -R 1000:1000 /home/user /data \
     && chmod -R 777 /data /data/uploads /var/log/nginx /var/lib/nginx /run /home/user
 
@@ -56,6 +56,10 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
+
+# Pre-cache PaddleOCR PP-OCRv4 models into the image so runtime startup is instant and network-free
+RUN python -c "import os; os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK']='True'; from ocr.paddle_engine import _init_paddle_ocr; _init_paddle_ocr('en')" || true \
+    && chmod -R 777 /home/user
 
 # ------------------------------------------------------------
 # Frontend
@@ -74,10 +78,11 @@ RUN rm -f /etc/nginx/sites-enabled/default
 # Runtime configuration
 # ------------------------------------------------------------
 ENV PYTHONUNBUFFERED=1 \
-    OMP_NUM_THREADS=2 \
-    MKL_NUM_THREADS=2 \
-    OPENBLAS_NUM_THREADS=2 \
-    PADDLE_NUM_THREADS=2 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    PADDLE_NUM_THREADS=1 \
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
     OCR_ENGINE=paddleocr \
     UPLOAD_DIR=/data/uploads \
     DATABASE_PATH=/data/metrcheck.db

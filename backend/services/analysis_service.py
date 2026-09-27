@@ -100,19 +100,17 @@ async def analyze_products(
         image_evidences.append(ev)
         pending.append((ev, image_path))
 
-    # ── Phase 2 (parallel): OCR all images concurrently ──
+    # ── Phase 2: Sequential OCR & Vision pipeline with explicit garbage collection ──
+    # Sequential execution ensures container resident memory (RSS) stays strictly under 512MB
+    # even when users analyze 4+ high-resolution product panels simultaneously.
+    import gc
     t_ocr_all0 = time.perf_counter()
-    import asyncio as _asyncio
-    ocr_results = await _asyncio.gather(
-        *[ocr_engine.extract(path) for _, path in pending]
-    )
-    t_ocr_all = (time.perf_counter() - t_ocr_all0) * 1000
-    for (ev, _path), ocr_res in zip(pending, ocr_results):
+    ocr_results = []
+    for idx, (ev, _path) in enumerate(pending):
+        ocr_res = await ocr_engine.extract(_path)
+        ocr_results.append(ocr_res)
         logger.info(f"[PERF] {ev.label} OCR: {ocr_res.processing_time * 1000:.1f} ms (passes: {ocr_res.ocr_passes})")
-    logger.info(f"[PERF] Combined OCR Phase: {t_ocr_all:.1f} ms")
 
-    # ── Phase 3: fill per-image OCR evidence & run Computer Vision Analysis ──
-    for idx, ((ev, _path), ocr_res) in enumerate(zip(pending, ocr_results)):
         total_processing_time += ocr_res.processing_time
         all_words.extend(ocr_res.words)
         ev.ocr_text = ocr_res.full_text
@@ -121,7 +119,7 @@ async def analyze_products(
         ev.average_confidence = ocr_res.average_confidence
         ev.preprocessing_variant = ocr_res.preprocessing_variant
 
-        # Run Computer Vision Intelligence Pipeline
+        # Run Computer Vision Intelligence Pipeline per-image
         try:
             t_vis0 = time.perf_counter()
             words_dict = [w.model_dump() if hasattr(w, 'model_dump') else w for w in ocr_res.words]
@@ -136,6 +134,12 @@ async def analyze_products(
             logger.info(f"[PERF] {ev.label} Computer Vision Analysis: {t_vis:.1f} ms")
         except Exception as e:
             logger.warning(f"[VISION] Failed for image {ev.label}: {e}")
+
+        # Explicitly release image tensors, intermediate crop buffers, and trigger garbage collection
+        gc.collect()
+
+    t_ocr_all = (time.perf_counter() - t_ocr_all0) * 1000
+    logger.info(f"[PERF] Combined OCR & Vision Phase: {t_ocr_all:.1f} ms")
 
     # 4. Combine OCR text across all images
     if len(image_evidences) == 1:

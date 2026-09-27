@@ -24,3 +24,9 @@ services:
         value: /data/uploads
       - key: CORS_ORIGINS
         value: "https://metrcheck-ai-d6cx.onrender.com,https://metrcheck-ai.onrender.com,https://bhardwaj001-metrcheck-ai.hf.space,http://localhost:5173,http://localhost:3000"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK
+        value: "True"
