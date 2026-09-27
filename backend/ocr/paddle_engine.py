@@ -149,10 +149,24 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
         try:
             if hasattr(instance, "paddlex_pipeline") and hasattr(instance.paddlex_pipeline, "_pipeline"):
                 pipe = instance.paddlex_pipeline._pipeline
-                import multiprocessing
-                import paddle.inference as paddle_infer
-
-                optimal_threads = min(max(multiprocessing.cpu_count() // 2, 4), 6)
+                # Adaptive thread allocation honoring container cgroups quota to prevent CFS throttling
+                optimal_threads = 2
+                try:
+                    if os.path.exists("/sys/fs/cgroup/cpu.max"):
+                        with open("/sys/fs/cgroup/cpu.max") as f:
+                            q, p = f.read().split()
+                            if q != "max":
+                                optimal_threads = max(1, min(int(round(float(q) / float(p))), 4))
+                    elif os.path.exists("/sys/fs/cgroup/cpu/cpu.cfs_quota_us"):
+                        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f_q, open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f_p:
+                            q_val = float(f_q.read().strip())
+                            p_val = float(f_p.read().strip())
+                            if q_val > 0:
+                                optimal_threads = max(1, min(int(round(q_val / p_val)), 4))
+                    else:
+                        optimal_threads = min(max((os.cpu_count() or 2) // 2, 1), 4)
+                except Exception:
+                    optimal_threads = 2
 
                 # 1. DBNet Text Detection: CPU threads = 6, MKLDNN disabled (DBNet PIR limitation)
                 if hasattr(pipe, "text_det_model") and hasattr(pipe.text_det_model, "runner"):

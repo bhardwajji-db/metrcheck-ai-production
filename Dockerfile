@@ -74,6 +74,10 @@ RUN rm -f /etc/nginx/sites-enabled/default
 # Runtime configuration
 # ------------------------------------------------------------
 ENV PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=2 \
+    MKL_NUM_THREADS=2 \
+    OPENBLAS_NUM_THREADS=2 \
+    PADDLE_NUM_THREADS=2 \
     OCR_ENGINE=paddleocr \
     UPLOAD_DIR=/data/uploads \
     DATABASE_PATH=/data/metrcheck.db
