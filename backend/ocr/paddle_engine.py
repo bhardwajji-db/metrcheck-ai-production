@@ -28,15 +28,18 @@ logger = logging.getLogger(__name__)
 # at onednn_instruction.cc:118 for PP-OCR models. Disabling the PIR API and
 # OneDNN before ANY paddle import routes execution through the legacy
 # executor which works reliably on CPU. (Env flags are read once at runtime init.)
-os.environ.setdefault("FLAGS_enable_pir_api", "0")
-os.environ.setdefault("FLAGS_enable_onednn", "0")
-os.environ.setdefault("FLAGS_use_mkldnn", "0")
-os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
-os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("PADDLE_NUM_THREADS", "1")
+os.environ["FLAGS_enable_pir_api"] = "0"
+os.environ["FLAGS_enable_onednn"] = "0"
+os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+os.environ["FLAGS_allocator_strategy"] = "naive_best_fit"
+os.environ["FLAGS_fraction_of_cpu_memory_to_use"] = "0.05"
+os.environ["FLAGS_eager_delete_tensor_gb"] = "0.0"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["PADDLE_NUM_THREADS"] = "1"
 
 import threading
 
@@ -100,11 +103,14 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
 
         t_load0 = time.perf_counter()
 
-        # Belt & suspenders: ensure OneDNN/PIR stay disabled before paddle inits
+        # Belt & suspenders: ensure OneDNN/PIR stay disabled and memory allocator strictly bounded
         os.environ["FLAGS_enable_pir_api"] = "0"
         os.environ["FLAGS_enable_onednn"] = "0"
         os.environ["FLAGS_use_mkldnn"] = "0"
         os.environ["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
+        os.environ["FLAGS_allocator_strategy"] = "naive_best_fit"
+        os.environ["FLAGS_fraction_of_cpu_memory_to_use"] = "0.05"
+        os.environ["FLAGS_eager_delete_tensor_gb"] = "0.0"
 
         from paddleocr import PaddleOCR
 
@@ -125,7 +131,7 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                 enable_mkldnn=False,
                 cpu_threads=1,
                 text_recognition_batch_size=1,
-                det_limit_side_len=960
+                text_det_limit_side_len=960
             )
         except Exception:
             try:
@@ -137,7 +143,7 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                     enable_mkldnn=False,
                     cpu_threads=1,
                     text_recognition_batch_size=1,
-                    det_limit_side_len=960
+                    text_det_limit_side_len=960
                 )
             except Exception:
                 try:
@@ -278,7 +284,7 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
                 # 5. SVTR Text Recognition with chunked batches to keep RAM strictly bounded
                 inner_pipe.text_rec_model.batch_sampler.batch_size = 1
                 rec_res = []
-                CHUNK_SIZE = 16
+                CHUNK_SIZE = 4
                 for c_idx in range(0, len(crops), CHUNK_SIZE):
                     c_batch = crops[c_idx:c_idx + CHUNK_SIZE]
                     rec_res.extend(list(inner_pipe.text_rec_model(c_batch)))
@@ -340,10 +346,16 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
 
     # PaddleOCR 3.x dict format fallback
     if isinstance(page_data, dict):
-        rec_texts = page_data.get("rec_texts") or page_data.get("texts") or []
-        rec_scores = page_data.get("rec_scores") or page_data.get("scores") or []
+        rec_texts = page_data.get("rec_texts")
+        if rec_texts is None:
+            rec_texts = page_data.get("texts") or []
+        rec_scores = page_data.get("rec_scores")
+        if rec_scores is None:
+            rec_scores = page_data.get("scores") or []
         rec_boxes = page_data.get("rec_boxes")
-        rec_polys = page_data.get("rec_polys") or page_data.get("dt_polys")
+        rec_polys = page_data.get("rec_polys")
+        if rec_polys is None:
+            rec_polys = page_data.get("dt_polys")
 
         for i, raw_item in enumerate(rec_texts):
             raw_text = str(raw_item).strip()
