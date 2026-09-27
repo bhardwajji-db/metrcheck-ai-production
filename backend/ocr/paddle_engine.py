@@ -202,10 +202,12 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
 
             try:
                 # 1. DBNet Text Detection
+                logger.info(f"[OCR-STEP1] Calling text_det_model.predict on image {img.shape}")
                 det_res = list(inner_pipe.text_det_model.predict(img))
                 if not det_res or "dt_polys" not in det_res[0]:
                     return lines, words, confs
                 dt_polys = det_res[0]["dt_polys"]
+                logger.info(f"[OCR-STEP2] DBNet returned {len(dt_polys) if dt_polys is not None else 0} polys")
                 if dt_polys is None or len(dt_polys) == 0:
                     return lines, words, confs
 
@@ -289,9 +291,11 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
                 inner_pipe.text_rec_model.batch_sampler.batch_size = 1
                 rec_res = []
                 CHUNK_SIZE = 4
+                logger.info(f"[OCR-STEP3] Calling text_rec_model on {len(crops)} crops (chunk size {CHUNK_SIZE})...")
                 for c_idx in range(0, len(crops), CHUNK_SIZE):
                     c_batch = crops[c_idx:c_idx + CHUNK_SIZE]
                     rec_res.extend(list(inner_pipe.text_rec_model(c_batch)))
+                logger.info(f"[OCR-STEP4] text_rec_model finished: {len(rec_res)} crops recognized")
 
                 # 6. Parse recognized texts and generate OCRWords with proportional sub-boxes
                 for b, r in zip(grouped_boxes, rec_res):
@@ -320,6 +324,7 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
                             words.append(OCRWord(text=t, confidence=conf, bbox=t_bbox, language=t_meta.get("language"), script=t_meta.get("script")))
                             curr_x += t_w
 
+                logger.info(f"[OCR-STEP5] _sync_paddle_extract returning {len(words)} words, {len(lines)} lines")
                 return lines, words, confs
 
             except Exception as e:

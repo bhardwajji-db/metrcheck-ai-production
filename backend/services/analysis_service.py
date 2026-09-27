@@ -121,6 +121,7 @@ async def analyze_products(
 
         # Run Computer Vision Intelligence Pipeline per-image
         try:
+            logger.info(f"[ANALYZE-STEP] Starting vision pipeline for {ev.label}...")
             t_vis0 = time.perf_counter()
             words_dict = [w.model_dump() if hasattr(w, 'model_dump') else w for w in ocr_res.words]
             ev.vision_analysis = vision_pipeline.analyze_image(
@@ -169,6 +170,7 @@ async def analyze_products(
     ocr_passes_count = sum(r.ocr_passes for r in ocr_results) if ocr_results else 1
 
     # 5. Extract structured info from combined OCR text with per-image provenance
+    logger.info("[ANALYZE-STEP] Starting structured extraction...")
     t_ext0 = time.perf_counter()
     product_info = llm_extractor.extract(combined_text, images=image_evidences)
     t_ext = (time.perf_counter() - t_ext0) * 1000
@@ -189,6 +191,7 @@ async def analyze_products(
     )
     
     # 6. Compliance check with visual proof localization
+    logger.info("[ANALYZE-STEP] Starting compliance checks...")
     t_comp0 = time.perf_counter()
     comp_result_dict = compliance_engine.check(product_info, ocr_text=combined_text, images=image_evidences, analysis_id=analysis_id)
     compliance_result = ComplianceResult(**comp_result_dict)
@@ -213,6 +216,7 @@ async def analyze_products(
     logger.info(f"[PERF] Calibration & Font Size Analysis: {t_font:.1f} ms")
     
     # 6C. External Verifications (FSSAI Licence & GS1 Barcode)
+    logger.info("[ANALYZE-STEP] Starting external verifications...")
     fssai_verification = await fssai_verifier.verify(product_info.fssai_license)
     barcode_val = product_info.barcode_detected or getattr(product_info, 'barcode', None) or (product_info.other_declarations.get('barcode') if product_info.other_declarations else None)
     gs1_verification = await gs1_verifier.verify(barcode_val)
