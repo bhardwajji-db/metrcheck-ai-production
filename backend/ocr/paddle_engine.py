@@ -135,7 +135,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                 enable_mkldnn=False,
                 cpu_threads=1,
                 text_recognition_batch_size=1,
-                text_det_limit_side_len=960
+                text_det_limit_type="max",
+                text_det_limit_side_len=640
             )
         except Exception:
             try:
@@ -147,7 +148,8 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                     enable_mkldnn=False,
                     cpu_threads=1,
                     text_recognition_batch_size=1,
-                    text_det_limit_side_len=960
+                    text_det_limit_type="max",
+                    text_det_limit_side_len=640
                 )
             except Exception:
                 try:
