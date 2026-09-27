@@ -186,12 +186,6 @@ def _init_paddle_ocr(lang: str = "en", use_angle_cls: bool = True):
                             runner_rec.predictor = paddle_infer.create_predictor(cfg_rec)
                             runner_rec.infer = type(runner_rec.infer)(runner_rec.predictor)
 
-                # 3. Minimal 1-crop startup warmup
-                try:
-                    dummy_crop = np.zeros((48, 160, 3), dtype=np.uint8)
-                    _ = list(pipe.text_rec_model([dummy_crop]))
-                except Exception:
-                    pass
         except Exception as e:
             logger.debug(f"[OCR] Predictor optimization fallback: {e}")
 

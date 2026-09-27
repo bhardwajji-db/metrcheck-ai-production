@@ -25,13 +25,6 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).warning("Startup database initialization failed (service degraded): %s", exc)
 
-    # Background pre-warm of OCR weights so first user request runs instantly
-    try:
-        import asyncio
-        from ocr.paddle_engine import _init_paddle_ocr
-        asyncio.create_task(asyncio.to_thread(_init_paddle_ocr, "en"))
-    except Exception as exc:
-        pass
     yield
     # Shutdown
 
