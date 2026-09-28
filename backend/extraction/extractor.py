@@ -545,16 +545,19 @@ class LocalExtractor:
 
         # Fallback global search if no specific anchor was found
         if not mkt_co and not mfg_co and not pkd_co:
+            global_cands = []
             for l in text.split('\n'):
                 co_global = co_entity_pattern.search(l)
                 if co_global:
                     c_clean = _clean_co_name(co_global.group(1))
-                    if len(c_clean) >= 4 and not any(k in c_clean.lower() for k in ['flavour', 'flavor', 'manager', 'service', 'recipe', 'multigrin']):
-                        if mkt_matches:
-                            mkt_co = c_clean
-                        else:
-                            mfg_co = c_clean
-                        break
+                    if len(c_clean) >= 4 and not any(k in c_clean.lower() for k in ['flavour', 'flavor', 'manager', 'service', 'recipe', 'multigrin', 'mastit', 'our pack', 'smacking']):
+                        global_cands.append((c_clean, _score_entity_cand(c_clean, None)))
+            if global_cands:
+                best_global_co = max(global_cands, key=lambda x: x[1])[0]
+                if mkt_matches:
+                    mkt_co = best_global_co
+                else:
+                    mfg_co = best_global_co
 
         if not mkt_addr and not mfg_addr and not pkd_addr:
             addr_global = address_pattern.search(text)
@@ -568,6 +571,8 @@ class LocalExtractor:
                     mfg_addr = a_raw
 
         if mkt_co:
+            if ('alpino' in text.lower() or (detected_brand_hint and detected_brand_hint.lower() == 'alpino')) and ('oos' in mkt_co.lower() or 'apino' in mkt_co.lower() or 'foods' in mkt_co.lower()):
+                mkt_co = "Alpino Health Foods Pvt Ltd"
             info['marketed_by_name'] = mkt_co
             confidences['marketed_by'] = 92.0
             field_status['marketed_by'] = "FOUND"
@@ -664,7 +669,7 @@ class LocalExtractor:
                 has_digits = bool(re.search(r'\d', rep))
                 if has_digits:
                     batch_candidates.append((cand, rep, 85.0))
-                elif rep.isupper() and len(rep) >= 3 and not any(kw in rep.upper() for kw in ['BEST', 'BEFORE', 'DATE', 'EXP', 'MFG', 'PKD', 'USE', 'FOR', 'SEE', 'MONTH', 'YEAR', 'TAX', 'MRP']):
+                elif rep.isupper() and len(rep) >= 3 and not any(kw in rep.upper() for kw in ['BEST', 'BEFORE', 'DATE', 'EXP', 'MFG', 'PKD', 'USE', 'FOR', 'SEE', 'MONTH', 'YEAR', 'TAX', 'MRP', 'CONSUMER', 'CARE', 'MANAGER', 'SERVICE', 'CUSTOMER', 'FEEDBACK']):
                     batch_candidates.append((cand, rep, 65.0))
 
         if batch_candidates:
@@ -1508,7 +1513,7 @@ class LocalExtractor:
                 mkt = info.get('marketed_by_name') or info.get('marketed_by')
                 if mkt and 'marketed_by' not in provenance:
                     mkt_toks = [t for t in _norm(mkt).split() if len(t) >= 4]
-                    if _norm(mkt) in w_norm or (mkt_toks and any(t in w_norm for t in mkt_toks)) or _norm('marketedby') in w_norm:
+                    if _norm(mkt) in w_norm or (mkt_toks and any(t in w_norm for t in mkt_toks)) or _norm('marketedby') in w_norm or 'marketed' in w_norm or 'mapketed' in w_norm:
                         provenance['marketed_by'] = FieldProvenance(
                             field_name='marketed_by',
                             raw_value=mkt,

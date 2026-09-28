@@ -38,7 +38,8 @@ INSTRUCTION_TERMS = {
     'OFPACK', 'PACKAGE', 'PANEL', 'FLAP', 'BASE', 'UNDER', 'OVER', 'REVERSE',
     'BEST', 'BEFORE', 'USE', 'EXPIRY', 'EXP', 'MFG', 'MFD', 'PKD', 'PACKED',
     'MONTHS', 'YEARS', 'DAYS', 'FROM', 'PACKAGING', 'MANUFACTURE', 'CONSUME',
-    'PRICE', 'TAXES', 'INCL', 'ALL', 'TAX', 'MRP', 'RS', 'INR', 'NET', 'WEIGHT', 'QTY'
+    'PRICE', 'TAXES', 'INCL', 'ALL', 'TAX', 'MRP', 'RS', 'INR', 'NET', 'WEIGHT', 'QTY',
+    'CONSUMER', 'CARE', 'MANAGER', 'SERVICE', 'CUSTOMER', 'FEEDBACK'
 }
 
 def repair_net_quantity(val: str) -> str:

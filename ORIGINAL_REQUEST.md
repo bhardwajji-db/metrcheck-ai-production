@@ -41,3 +41,53 @@ Verify live deployed URLs using real packaged commodity images. Confirm OCR text
 - [ ] Downloadable PDF and HTML compliance reports are generated with valid SHA-256 integrity hashes.
 - [ ] Data created during audit runs persists across container restarts.
 - [ ] Pushing commits to GitHub automatically triggers a cloud rebuild and redeploy.
+
+## Follow-up — 2026-09-28T05:58:24Z
+
+Optimize OCR inference latency and fix statutory field extraction inaccuracies in the MetrCheck AI regulatory compliance screening system on production cloud (512MB RAM, 0.1 vCPU) and local environments without mocks or regressions.
+
+Working directory: c:\Users\Avinash\OneDrive\Desktop\OMSAINI_FOLDER
+Integrity mode: development
+
+## Requirements
+
+### R1. OCR Latency Optimization & Elimination of Unnecessary Fallback Passes
+In `backend/ocr/paddle_engine.py`:
+- Remove the premature fallback trigger `len(words1) < 8` that falsely labels clean, sparse front-panel packaging images (e.g. snack packets with 4-6 prominent words like 'FAMILY PACK TakaTak CHATPATA MASALA') as degraded and launches a second 1.35x upscaled OCR pass. Only invoke full-image fallback if `len(words1) == 0`.
+- Enable batched crop recognition (`batch_sampler.batch_size = 4` or `8` and chunk size 8) in PaddleX's SVTR model so that multi-box back panels (40+ crops) are evaluated in batched C++ predictor tensors instead of sequential single-crop Python loops.
+- Skip secondary targeted region OCR when Pass 1 already extracts valid tokens (`len(words1) >= 6`), reducing per-image processing time from 40s+ down to ~10-15s.
+
+### R2. Statutory Extraction Accuracy & Nutrition Leakage Prevention
+In `backend/extraction/extractor.py`:
+- **Net Quantity**: Prevent nutrition table facts (e.g. `Protein ... 17.0g`, `Carbohydrate ... 65g`, `Fat ... 25g`, `per 100g`, `per serve`) from ever being misidentified as Net Quantity. If statutory anchors (`Net Wt`, `Net Quantity`) are absent or unstamped, do not grab arbitrary standalone numbers from adjacent nutrition lines.
+- **Product Name Synthesis**: Fuse prominent front-panel sub-brand and commodity words (e.g. `TakaTak` + `Chatpata Masala`) into the true product title (`TakaTak Chatpata Masala`) rather than truncating to only the commodity suffix (`Chatpata Masala`).
+- **Brand Name Prioritization**: Prevent generic corporate manufacturer suffixes (`ITC Limited` -> `Itc`, `Hindustan Unilever` -> `Hindustan Unilever`) from overriding the actual packaging brand (`Bingo`, `Kissan`, `Haldiram's`) detected on the front panel.
+- **Batch Number Sanitization**: Filter out statutory keywords like `BEST`, `EXP`, `MFG`, `DATE`, `USE`, `BEFORE` from being extracted as batch numbers.
+- **FSSAI License Substring Recovery**: Extract 14-digit numeric license patterns even when prepended or joined with OCR noise artifacts (e.g. `RODUA100405100910` -> `10014051000910`).
+- **Manufacturer Entity Isolation**: Strip customer care headers (`THE CONSUMER SERVICE MANAGER`, `FOR FEEDBACK`, `flavour`) from company entity strings so clean manufacturer names and addresses are extracted.
+
+### R3. Local & Real Image Verification
+Verify extraction against real user test images in `c:\Users\Avinash\Downloads\`:
+- `taka taak front.jpg` and `takataak back.webp` (Haldiram's TakaTak Chatpata Masala)
+- Real packaging test cases (Kissan Tomato Ketchup, Tata Salt, Kurkure)
+Ensure extracted fields match ground truth and zero crashes or regressions occur in existing test suites (`pytest backend/tests`).
+
+### R4. Production Deployment & Live Verification
+Commit and push all fixes to production git remote (`https://github.com/bhardwajji-db/metrcheck-ai-production.git` on branch `main`).
+Poll Render deployment API until the build is live, and execute live end-to-end API tests on `https://metrcheck-ai-d6cx.onrender.com/api/analyze` to confirm response times under 35 seconds and accurate field extraction.
+
+## Acceptance Criteria
+
+### Automated Verification
+- [ ] Pytest test suite passes without regressions (`pytest backend/tests`).
+- [ ] Single-image and multi-image local OCR benchmarks demonstrate >= 2.5x speed improvement without degraded word recall.
+- [ ] Extraction unit tests confirm:
+  - Net Quantity excludes nutrition facts (e.g., Protein 17.0g).
+  - TakaTak front + back extracts `Product Name: TakaTak Chatpata Masala`.
+  - Batch number rejects `BEST`.
+  - FSSAI license extracts valid 14 digits from noisy strings.
+
+### Cloud Deployment & Live Functionality
+- [ ] Deployment builds cleanly on Render and transitions to `Status: live`.
+- [ ] Live API test on `https://metrcheck-ai-d6cx.onrender.com/api/analyze` completes in under 35 seconds for multi-panel images.
+- [ ] Live analysis response returns accurate product name, net quantity, brand, and legal metrology rule evaluations.
