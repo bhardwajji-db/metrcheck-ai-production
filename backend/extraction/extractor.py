@@ -10,7 +10,9 @@ from ocr.repair import (
     repair_net_quantity,
     repair_mrp,
     repair_date,
-    repair_batch_number
+    repair_batch_number,
+    normalize_commodity_phrase,
+    normalize_commodity_word
 )
 from integrations.fssai.state_codes import decode_fssai_licence
 from integrations.gs1.prefix_catalog import decode_gs1_gtin
@@ -127,12 +129,15 @@ class LocalExtractor:
         # 2. Net Quantity / Net Weight (Contextually Anchored & Serving-Excluding)
         # -------------------------------------------------------------
         serving_context_re = re.compile(
-            r'(?:per\s*serve|serving\s*size|per\s*100\s*g|portion|number\s*of\s*serves|'
+            r'(?:per\s*serve|serving\s*size|per\s*100\s*(?:g|ml)|portion|number\s*of\s*serves|'
             r'serves\s*per|%?\s*rda|nutrition|nutritional|nutrients|energy|kcal|kj|'
             r'protein|carb|carbohydrate|total\s*fat|fat|trans\s*fat|sat(?:urated)?\s*fat|'
             r'cholesterol|sugar|sugars|added\s*sugars?|fibre|fiber|dietary\s*fibre|'
-            r'sodium|calcium|iron|zinc|potassium|vitamin|minerals|approx|'
-            r'sales@|@|email|call\s*us|tel|phone|contact|manager|noida|delhi)',
+            r'sodium|calcium|iron|zinc|potassium|vitamin|minerals|approx)',
+            re.IGNORECASE
+        )
+        serving_header_re = re.compile(
+            r'\b(?:per\s*serve|serving\s*size|per\s*100\s*(?:g|ml)|number\s*of\s*serves|serves\s*per|serving\s*suggestion)\b',
             re.IGNORECASE
         )
 
@@ -150,7 +155,9 @@ class LocalExtractor:
             if line_end == -1:
                 line_end = len(text)
             curr_line = text[line_start:line_end]
-            if serving_context_re.search(curr_line):
+
+            # Reject if the line is an explicit nutrition table header
+            if re.search(r'\b(?:NUTRITION(?:AL)?\s*(?:INFORMATION|FACTS|VALUES?)|NUTRITIVE\s*VALUE|TYPICAL\s*VALUES)\b', curr_line, re.IGNORECASE):
                 continue
 
             window = text[nm.start():min(len(text), nm.end() + 100)]
@@ -160,18 +167,28 @@ class LocalExtractor:
                 re.IGNORECASE
             )
             if qty_m:
+                # Check if the matched quantity itself is in a serving fact context
+                between_anchor_and_qty = window[len(nm.group(0)):qty_m.start()]
+                if serving_header_re.search(between_anchor_and_qty):
+                    continue
+                after_qty = window[qty_m.end():min(len(window), qty_m.end() + 25)]
+                if re.match(r'^\s*(?:per\s*serve|/\s*100\s*g|\(?\s*serving\s*size\)?)\b', after_qty, re.IGNORECASE):
+                    continue
+
                 raw_cand = f"{qty_m.group(1)} {qty_m.group(2)}"
                 repaired = repair_net_quantity(raw_cand)
                 if repaired:
                     net_qty_candidates.append((raw_cand, repaired, 94.0, "REGEX_ANCHOR"))
 
-        # Step 2B: Check inline primary regex if not found via anchor search (excluding serving lines)
+        # Step 2B: Check inline primary regex if not found via anchor search
         if not net_qty_candidates:
             for line in text.split('\n'):
-                if serving_context_re.search(line):
+                if serving_header_re.search(line):
                     continue
                 inline_net = PATTERNS['net_quantity'].search(line)
                 if inline_net:
+                    if serving_header_re.search(inline_net.group(0)):
+                        continue
                     raw_cand = inline_net.group(1).strip()
                     repaired = repair_net_quantity(raw_cand)
                     if repaired:
@@ -180,18 +197,31 @@ class LocalExtractor:
 
         # Step 2C: Fallback to standalone weight/volume (strictly excluding serving/nutrition lines and nutrition blocks)
         if not net_qty_candidates:
-            # Mask nutrition blocks (from nutrition table header to end/25 lines)
+            # Mask nutrition blocks (from nutrition table header to end of nutrition table / next section)
             nutrition_header_re = re.compile(
                 r'\b(?:NUTRITION(?:AL)?\s*(?:INFORMATION|FACTS|VALUES?|DECLARATION)?|NUTRITIVE\s*VALUE|TYPICAL\s*VALUES|PER\s*100\s*(?:g|ml)|PER\s*SERVE|SERVING\s*SIZE)\b',
+                re.IGNORECASE
+            )
+            section_break_re = re.compile(
+                r'\b(?:INGREDIENTS?|MFR|MFG|MANUFACTURED|PACKED|PKD|MARKETED|MKTD|BATCH|LOT|MRP|PRICE|RS\.?|BEST\s*BEFORE|EXP|EXPIRY|USE\s*BY|CONSUMER|CUSTOMER|FEEDBACK|CARE|LEVERCARE|QUERY|FSSAI|LIC\.?|LICENCE|TRADEMARK|REGISTERED|OFFENCE|WARNING|STORAGE|STORE|SCAN|BARCODE|NET|WT|QTY|QUANTITY|USP)\b',
                 re.IGNORECASE
             )
             nutrition_line_indices = set()
             text_lines = text.split('\n')
             for i, l in enumerate(text_lines):
                 if nutrition_header_re.search(l):
-                    for j in range(i, min(len(text_lines), i + 14)):
-                        if j > i and re.search(r'\b(?:INGREDIENTS|MFG\s*BY|MANUFACTURED\s*BY|MARKETED\s*BY|BATCH\s*NO|MRP|BEST\s*BEFORE|CONSUMER\s*CARE|FSSAI|LIC\.?\s*NO|FEEDBACK|QUERY|CARE|TRADEMARK|SCAN)\b', text_lines[j], re.IGNORECASE):
+                    consecutive_non_nutrition = 0
+                    for j in range(i, min(len(text_lines), i + 20)):
+                        if j > i and section_break_re.search(text_lines[j]):
                             break
+                        if j > i:
+                            is_nutritional_row = bool(serving_context_re.search(text_lines[j]) or re.search(r'\b(?:\d+(?:\.\d+)?\s*(?:g|gm|mg|mcg|kcal|kj|%)|\d+\s*kJ)\b', text_lines[j], re.I))
+                            if not is_nutritional_row:
+                                consecutive_non_nutrition += 1
+                                if consecutive_non_nutrition >= 2:
+                                    break
+                            else:
+                                consecutive_non_nutrition = 0
                         nutrition_line_indices.add(j)
                 elif serving_context_re.search(l):
                     for adj in range(max(0, i - 1), min(len(text_lines), i + 2)):
@@ -203,7 +233,7 @@ class LocalExtractor:
                     continue
                 if serving_context_re.search(line):
                     continue
-                surrounding = " ".join(text_lines[max(0, idx - 2):min(len(text_lines), idx + 3)])
+                surrounding = " ".join(text_lines[max(0, idx - 1):min(len(text_lines), idx + 2)])
                 if serving_context_re.search(surrounding):
                     continue
                 if re.search(r'\b(?:19\d\d|20\d\d|kcal|cal|kj|protein|carb|fat|energy|sodium|potassium|sugar|fiber|fibre|cholesterol|calcium|iron|zinc|vitamin|minerals)\b', line, re.IGNORECASE):
@@ -415,24 +445,37 @@ class LocalExtractor:
         # 5. Marketed By vs Manufacturer vs Packer vs Importer Roles
         # -------------------------------------------------------------
         detected_brand_hint = None
-        if images and len(images) > 0:
+        KNOWN_PACKAGING_BRANDS = (
+            'Bingo', 'Kissan', "Haldiram's", 'Haldiram', 'Kurkure', "Lay's", 'Lays',
+            'Cadbury', 'Maggi', 'Tata Salt', 'Tata', 'Alpino', 'Amul', 'Parle',
+            'Britannia', 'Sunfeast', 'Aashirvaad', 'Oreo', 'Doritos', 'Pepsico',
+            'Nestle', 'Dabur', 'Patanjali', "Kellogg's", 'Kelloggs', 'Saffola',
+            'Fortune', 'Everest', 'Catch', 'MDH', 'Bikaji', 'Balaji'
+        )
+        for kb in sorted(KNOWN_PACKAGING_BRANDS, key=len, reverse=True):
+            if re.search(r'\b' + re.escape(kb.lower()) + r'\b', text.lower()):
+                detected_brand_hint = kb
+                break
+
+        if not detected_brand_hint and images and len(images) > 0:
             fw = getattr(images[0], 'words', None)
             if fw:
                 for w in fw[:6]:
                     if getattr(w, 'confidence', 0.0) >= 75.0 and 3 <= len(w.text) <= 20 and not re.search(r'\d', w.text):
-                        detected_brand_hint = w.text.strip().title()
-                        break
+                        if not any(term in w.text.lower() for term in ['making', 'health', 'fun', 'fresh', '100%', 'since', 'per', 'serve']):
+                            detected_brand_hint = w.text.strip().title()
+                            break
         if not detected_brand_hint and '=== [FRONT LABEL] ===' in text:
             f_part = text.split('=== [BACK LABEL] ===')[0].replace('=== [FRONT LABEL] ===', '')
             f_lines = [l.strip() for l in f_part.split('\n') if l.strip()]
             for l in f_lines[:6]:
                 if len(l.split()) <= 2 and 3 <= len(l) <= 20 and not re.search(r'\d', l):
-                    if not any(term == l.lower() for term in ['with', 'fresh', '100%', 'since', 'per', 'serve', 'from']):
+                    if not any(term in l.lower() for term in ['making', 'health', 'fun', 'australian', 'oats', 'with', 'fresh', '100%', 'since', 'per', 'serve', 'from']):
                         detected_brand_hint = l.strip().title()
                         break
 
         co_entity_pattern = re.compile(
-            r'\b([A-Z0-9][A-Za-z0-9\s,\.\-\&]{2,45}?(?:PVT[.,\s]*LTD\.?|PRIVATE\s*LIMITED|PYT[.,\s]*LT\.?|PTO[.,\s]*LTD\.?|PVT\.?|LTD\.?|LIMITED|PTO\.?|(?:\b|\s+)LLP\b|HEALTH\s*FO+DS?(?:\s*(?:PVT|PTO|PYT)[.,\s]*(?:LTD|PTO)\.?)?|FO+DS?(?:\s*(?:PVT|PTO|PYT)[.,\s]*(?:LTD|PTO)\.?)?|ALPINO[A-Za-z0-9\s,\.\-\&]*|SNACKS|BEVERAGES|AGRO|INDUSTRIES|ENTERPRISES|BAKERS))\b',
+            r'\b([A-Z0-9][A-Za-z0-9\s,\.\-\&]{2,45}?(?:PVT[.,\s]*LTD\.?|PRIVATE\s*LIMITED|PYT[.,\s]*LT\.?|PTO[.,\s]*LTD\.?|PVT\.?|LTD\.?|LIMITED|PTO\.?|(?:\b|\s+)LLP\b|HEALTH\s*FO+DS?(?:\s*(?:PVT|PTO|PYT)[.,\s]*(?:LTD|PTO)\.?)?|FO+DS?(?:\s*(?:PVT|PTO|PYT)[.,\s]*(?:LTD|PTO)\.?)?|SNACKS|BEVERAGES|AGRO|INDUSTRIES|ENTERPRISES|BAKERS))\b',
             re.IGNORECASE
         )
         
@@ -493,10 +536,20 @@ class LocalExtractor:
                         c = DISCLAIMER_PREFIX_RE.sub('', tok_clean).strip()
                         break
 
-            # Contextual brand repair: e.g. OCR-corrupted "TH OOS PVTLTD" with Alpino brand hint
-            if detected_brand_hint and detected_brand_hint.lower() == 'alpino':
-                if any(k in c.lower() for k in ['oos pvt', 'foods pvt', 'th oos', 'alpino']):
-                    c = "Alpino Health Foods Pvt. Ltd."
+            # Generalized OCR repair for common company designator noise (e.g. OOS -> Foods, TH OOS -> Health Foods, PYT/PTO -> Pvt)
+            c = re.sub(r'\b(?:TH\s+OOS|TH\s+FO+DS)\b', 'Health Foods', c, flags=re.IGNORECASE)
+            c = re.sub(r'\bOOS\b', 'Foods', c, flags=re.IGNORECASE)
+            c = re.sub(r'\b(?:PYT|PTO)\b', 'Pvt', c, flags=re.IGNORECASE)
+            c = re.sub(r'\bLT\b', 'Ltd', c, flags=re.IGNORECASE)
+            c = re.sub(r'\bPVTLTD\b', 'Pvt Ltd', c, flags=re.IGNORECASE)
+
+            # Suffix-backward tracing brand-association:
+            # If entity is an incomplete legal entity (e.g. "Health Foods Pvt. Ltd.", "Foods Pvt Ltd")
+            # lacking the brand name, and a prominent front-panel brand was detected, associate the brand
+            if detected_brand_hint and detected_brand_hint.lower() not in c.lower():
+                corp_descriptors = ('health foods', 'foods', 'snacks', 'beverages', 'industries', 'enterprises', 'agro', 'products', 'bakers')
+                if any(c.lower().startswith(d) for d in corp_descriptors) and len(c.split()) <= 5:
+                    c = f"{detected_brand_hint} {c}"
 
             c = re.sub(r'^[,\s.:\-]+|[,\s.:\-]+$', '', c).strip()
             return c
@@ -637,8 +690,12 @@ class LocalExtractor:
                     mfg_addr = a_raw
 
         if mkt_co:
-            if ('alpino' in text.lower() or (detected_brand_hint and detected_brand_hint.lower() == 'alpino')) and ('oos' in mkt_co.lower() or 'apino' in mkt_co.lower() or 'foods' in mkt_co.lower()):
-                mkt_co = "Alpino Health Foods Pvt Ltd"
+            # Generalized brand affiliation: if entity has a corporate descriptor
+            # but is missing the brand name, and a prominent brand was detected, prepend brand
+            if detected_brand_hint and detected_brand_hint.lower() not in mkt_co.lower():
+                generic_corp_prefixes = ('health foods', 'foods', 'snacks', 'beverages', 'industries', 'enterprises', 'agro', 'products', 'bakers')
+                if any(mkt_co.lower().startswith(p) for p in generic_corp_prefixes) and len(mkt_co.split()) <= 6:
+                    mkt_co = f"{detected_brand_hint} {mkt_co}"
             info['marketed_by_name'] = mkt_co
             confidences['marketed_by'] = 92.0
             field_status['marketed_by'] = "FOUND"
@@ -1383,7 +1440,7 @@ class LocalExtractor:
         if candidates:
             best_cand, best_score = max(candidates, key=lambda x: x[1])
             clean_name = re.sub(r'^[^\w\s]+|[^\w\s\)]+$', '', best_cand).strip().title()
-            clean_name = re.sub(r'\bKetchupo\b', 'Ketchup', clean_name, flags=re.IGNORECASE)
+            clean_name = normalize_commodity_phrase(clean_name)
 
             # Fuse prominent front-panel sub-brand and commodity words (TakaTak + Chatpata Masala -> TakaTak Chatpata Masala)
             is_commodity_only = all(w.lower() in commodity_terms or w.lower() in {'fresh', 'pure', 'classic', 'crunchy', 'crispy', 'spicy', 'tasty'} for w in clean_name.split())

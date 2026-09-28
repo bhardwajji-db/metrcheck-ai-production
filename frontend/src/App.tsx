@@ -38,6 +38,7 @@ const ProductEdit = lazy(() => import('./pages/ProductEdit'));
 const BusinessProfile = lazy(() => import('./pages/BusinessProfile'));
 const AccountSettings = lazy(() => import('./pages/AccountSettings'));
 const AdminUsers = lazy(() => import('./pages/AdminUsers'));
+const BarcodeFssaiLookup = lazy(() => import('./pages/BarcodeFssaiLookup'));
 
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -134,6 +135,7 @@ function App() {
                     <Route path="/products/:productId/edit" element={<RequireAuth><MerchantOrAdmin><ProductEdit /></MerchantOrAdmin></RequireAuth>} />
                     <Route path="/business-profile" element={<RequireAuth><BusinessProfile /></RequireAuth>} />
                     <Route path="/analyze" element={<RequireAuth><Analyze /></RequireAuth>} />
+                    <Route path="/lookup" element={<RequireAuth><BarcodeFssaiLookup /></RequireAuth>} />
                     <Route path="/manual-check" element={<RequireAuth><ManualProductCheck /></RequireAuth>} />
                     <Route path="/analyze-listing" element={<RequireAuth><AnalyzeListing /></RequireAuth>} />
                     <Route path="/preprint" element={<RequireAuth><PrePrintCompliance /></RequireAuth>} />

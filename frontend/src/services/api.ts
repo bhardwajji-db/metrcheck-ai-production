@@ -966,6 +966,40 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reopen_reason: reopenReason, comments }),
     }),
+
+  // ── Barcode & FSSAI Product Intelligence ──
+  lookupBarcode: (barcode: string): Promise<any> =>
+    fetchJSON<any>(`${BASE_URL}/integrations/barcode/lookup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barcode }),
+    }),
+
+  scanBarcodeImage: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = tokenStore.get();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE_URL}/integrations/barcode/scan-image`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Scan failed' }));
+      throw new Error(err.detail || 'Scan failed');
+    }
+    return res.json();
+  },
+
+  verifyFssaiLicence: (licence_number: string): Promise<any> =>
+    fetchJSON<any>(`${BASE_URL}/integrations/fssai/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ licence_number }),
+    }),
 };
 
 export default api;

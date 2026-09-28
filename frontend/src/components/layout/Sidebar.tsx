@@ -24,7 +24,8 @@ import {
   GitCompare,
   UserCheck,
   Boxes,
-  Building2
+  Building2,
+  Barcode
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
@@ -197,12 +198,24 @@ export default function Sidebar({
       highlight: true 
     },
     { 
+      to: '/lookup', 
+      icon: Barcode, 
+      label: 'Barcode & FSSAI Lookup',
+      badge: 'New' 
+    },
+    { 
       to: '/manual-check', 
       icon: FileText, 
       label: t('navigation.manual_product_check')
     },
     { to: '/history', icon: History, label: t('navigation.my_scan_history') }
   ] : isMerchant ? [
+    { 
+      to: '/lookup', 
+      icon: Barcode, 
+      label: 'Barcode & FSSAI Lookup',
+      badge: 'New' 
+    },
     { to: '/preprint', icon: Printer, label: t('navigation.pre_print_compliance') },
     { to: '/versions', icon: GitCompare, label: t('navigation.version_comparison') },
     { to: '/analyze-listing', icon: FileText, label: t('navigation.listing_check') },

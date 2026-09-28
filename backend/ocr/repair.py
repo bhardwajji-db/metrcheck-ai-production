@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Optional, Set
 
 def repair_fssai_license(text: str) -> Optional[str]:
     """
@@ -59,6 +59,61 @@ INSTRUCTION_TERMS = {
     'PRICE', 'TAXES', 'INCL', 'ALL', 'TAX', 'MRP', 'RS', 'INR', 'NET', 'WEIGHT', 'QTY',
     'CONSUMER', 'CARE', 'MANAGER', 'SERVICE', 'CUSTOMER', 'FEEDBACK'
 }
+
+COMMODITY_NORMALIZATION_TERMS: Set[str] = {
+    'ketchup', 'tomato ketchup', 'sauce', 'tomato sauce', 'chips', 'potato chips',
+    'oats', 'super oats', 'porridge', 'noodles', 'pasta', 'biscuit', 'biscuits',
+    'cookies', 'cookie', 'namkeen', 'bhujia', 'crisps', 'snack', 'snacks',
+    'cereal', 'muesli', 'granola', 'cornflakes', 'puree', 'paste', 'juice',
+    'beverage', 'drink', 'tea', 'coffee', 'rusk', 'wafer', 'cake', 'bread',
+    'flour', 'atta', 'rice', 'oil', 'ghee', 'butter', 'chocolate', 'chocolates',
+    'masala', 'chatpata', 'tomato', 'salt'
+}
+
+def normalize_commodity_word(word: str) -> str:
+    """
+    Generalized commodity word normalization and OCR artifact repair.
+    Repairs trailing logo dots, trademark circle artifacts, degree marks,
+    and single-character substitutions against packaging commodity vocabulary.
+    (e.g. 'Ketchupo' -> 'Ketchup', 'Tomatto' -> 'Tomato', 'Chipso' -> 'Chips').
+    """
+    if not word:
+        return ""
+    w_clean = word.strip()
+    w_lower = w_clean.lower()
+
+    if w_lower in COMMODITY_NORMALIZATION_TERMS:
+        return w_clean
+
+    for term in COMMODITY_NORMALIZATION_TERMS:
+        if len(term.split()) == 1 and len(term) >= 4:
+            # Trailing OCR symbol / artifact (e.g. 'ketchupo' -> 'ketchup')
+            if w_lower.startswith(term) and len(w_lower) == len(term) + 1:
+                if w_clean.isupper():
+                    return term.upper()
+                elif w_clean.istitle():
+                    return term.title()
+                return term
+            # 1-edit distance substitution repair for words with length >= 5
+            if len(w_lower) == len(term) and len(term) >= 5:
+                diffs = sum(1 for a, b in zip(w_lower, term) if a != b)
+                if diffs == 1:
+                    if w_clean.isupper():
+                        return term.upper()
+                    elif w_clean.istitle():
+                        return term.title()
+                    return term
+
+    return w_clean
+
+def normalize_commodity_phrase(phrase: str) -> str:
+    """
+    Applies generalized commodity word normalization across all words in a phrase.
+    """
+    if not phrase:
+        return ""
+    tokens = phrase.split()
+    return " ".join(normalize_commodity_word(t) for t in tokens)
 
 def repair_net_quantity(val: str) -> str:
     """
@@ -202,7 +257,7 @@ def repair_batch_number(val: str) -> str:
         return ""
 
     cand = " ".join(valid_tokens)
-    m = re.search(r'([A-Za-z0-9\-_\/]{2,30})', cand)
+    m = re.search(r'([A-Za-z0-9\-_\/]{1,20}(?:\s+[A-Za-z0-9\-_\/]{1,20})?)', cand)
     if m:
         res = m.group(1).strip()
         # Reject purely alphabetic statutory terms

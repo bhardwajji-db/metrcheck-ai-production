@@ -17,9 +17,40 @@ class BarcodeDetector:
             return BarcodeDetectionResult()
 
         h, w = img_bgr.shape[:2]
+
+        # 1. First attempt direct barcode decoding via OpenCV's BarcodeDetector
+        try:
+            detector = cv2.barcode.BarcodeDetector()
+            ret, decoded_info, decoded_types, points = detector.detectAndDecodeWithType(img_bgr)
+            if ret and decoded_info and len(decoded_info) > 0 and decoded_info[0]:
+                decoded_val = decoded_info[0].strip()
+                decoded_type = decoded_types[0] if (decoded_types and len(decoded_types) > 0) else "1D_BARCODE"
+                if points is not None and len(points) > 0:
+                    pts = points[0].astype(int)
+                    bx = int(np.min(pts[:, 0]))
+                    by = int(np.min(pts[:, 1]))
+                    bw = int(np.max(pts[:, 0]) - bx)
+                    bh = int(np.max(pts[:, 1]) - by)
+                    best_box = [max(0, bx), max(0, by), min(w, bx + bw), min(h, by + bh)]
+                    norm_box = normalize_bbox(best_box, w, h)
+                    return BarcodeDetectionResult(
+                        detected=True,
+                        barcode_type=decoded_type or "1D_BARCODE",
+                        decoded_value=decoded_val,
+                        bbox=best_box,
+                        normalized_bbox=norm_box,
+                        orientation="HORIZONTAL",
+                        confidence=0.96,
+                        confidence_tier=vision_config.get_confidence_tier(0.96),
+                        detection_method="OPENCV_BARCODE_DETECTOR"
+                    )
+        except Exception:
+            pass
+
+        # 2. Fallback to morphological gradient analysis to localize barcode region
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
-        # 1. Compute Scharr/Sobel gradient magnitude representation in X and Y
+        # Compute Scharr/Sobel gradient magnitude representation in X and Y
         grad_x = cv2.Sobel(gray, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
         grad_y = cv2.Sobel(gray, ddepth=cv2.CV_32F, dx=0, dy=1, ksize=-1)
 
@@ -27,11 +58,11 @@ class BarcodeDetector:
         gradient = cv2.subtract(grad_x, grad_y)
         gradient = cv2.convertScaleAbs(gradient)
 
-        # 2. Blur and threshold
+        # Blur and threshold
         blurred = cv2.GaussianBlur(gradient, (9, 9), 0)
         _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # 3. Morphological close to bridge gaps between parallel bars
+        # Morphological close to bridge gaps between parallel bars
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 7))
         closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 

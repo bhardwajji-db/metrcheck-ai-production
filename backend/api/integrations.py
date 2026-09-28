@@ -3,12 +3,18 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import os
+import re
 import tempfile
 import uuid
+import cv2
+import numpy as np
 
 from models.schemas import FSSAIVerificationResult, GS1VerificationResult, CalibrationResult
 from integrations.fssai.verifier import fssai_verifier
 from integrations.gs1.verifier import gs1_verifier
+from integrations.product_lookup import product_lookup_service
+from vision.barcode_detector import barcode_detector
+from vision.qr_detector import qr_detector
 from services.calibration_service import calibration_service
 from config import settings
 
@@ -85,6 +91,63 @@ async def calibrate_image_target(file: UploadFile = File(...)):
                 os.remove(tmp_path)
             except Exception:
                 pass
+
+class BarcodeLookupRequest(BaseModel):
+    barcode: str
+
+@router.post("/barcode/lookup")
+async def lookup_product_by_barcode(req: BarcodeLookupRequest):
+    """
+    Fetches real-world product metadata, brand, net quantity, ingredients, nutrition,
+    and official packaging images from open global product databases given a GTIN/EAN barcode.
+    """
+    if not req.barcode or not req.barcode.strip():
+        raise HTTPException(status_code=400, detail="Barcode is required.")
+    
+    data = product_lookup_service.fetch_by_barcode(req.barcode.strip())
+    return data
+
+@router.post("/barcode/scan-image")
+async def scan_barcode_from_image(file: UploadFile = File(...)):
+    """
+    Directly scans and decodes 1D barcodes (EAN-13, UPC) and 2D QR codes from an uploaded package image,
+    then automatically fetches verified product metadata from the global product registry.
+    """
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Could not decode image file.")
+
+    # 1. Try QR code detector
+    qr_res = qr_detector.detect_and_decode(img)
+    decoded_code = None
+    code_type = "UNKNOWN"
+
+    if qr_res.detected and qr_res.decoded_payload:
+        decoded_code = qr_res.decoded_payload
+        code_type = "QR_CODE"
+
+    # 2. Try Barcode detector
+    bc_res = barcode_detector.detect(img)
+    if bc_res.detected and bc_res.decoded_value:
+        decoded_code = bc_res.decoded_value
+        code_type = bc_res.barcode_type or "1D_BARCODE"
+
+    product_data = None
+    if decoded_code:
+        num_code = re.sub(r'\D', '', decoded_code)
+        if len(num_code) >= 8:
+            product_data = product_lookup_service.fetch_by_barcode(num_code)
+
+    return {
+        "detected": bool(decoded_code),
+        "code": decoded_code,
+        "code_type": code_type,
+        "product_data": product_data,
+        "qr_details": qr_res.model_dump() if qr_res.detected else None,
+        "barcode_details": bc_res.model_dump() if bc_res.detected else None
+    }
 
 
 # ── Section 13: External Cross-Checking & Integration Status Routes ──
