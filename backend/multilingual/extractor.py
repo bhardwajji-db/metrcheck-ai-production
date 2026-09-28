@@ -301,7 +301,7 @@ class MultilingualExtractor:
     def _extract_net_quantity(self, raw_text: str, norm_text: str) -> Tuple[Optional[str], str, str, float]:
         """Extract Net Quantity / Weight across all 10 languages with unit standardization."""
         serving_context_re = re.compile(
-            r'(?:per\s*serve|serving\s*size|per\s*100\s*g|portion|%?\s*rda|nutrition|energy|kcal|carb|fat|protein)',
+            r'(?:per\s*serve|serving\s*size|per\s*100\s*g|portion|number\s*of\s*serves|serves\s*per|%?\s*rda|nutrition|nutritional|energy|kcal|kj|protein|carb|carbohydrate|fat|trans\s*fat|saturated|sodium|potassium|sugar|added\s*sugar|fiber|dietary|cholesterol|sales@|@|email|call\s*us|tel|phone|contact|manager|noida|delhi)',
             re.IGNORECASE
         )
 
@@ -333,9 +333,12 @@ class MultilingualExtractor:
                         if repaired:
                             return repaired, raw_line, lang, 94.0
 
-        # Fallback: standalone weight / volume in non-serving lines
+        # Fallback: standalone weight / volume in non-serving lines (strictly excluding surrounding nutrition/contact context)
         for idx, line in enumerate(lines):
-            if serving_context_re.search(line) or re.search(r'\b(?:19\d\d|20\d\d|kcal|cal)\b', line, re.IGNORECASE):
+            if serving_context_re.search(line) or re.search(r'\b(?:19\d\d|20\d\d|kcal|cal|kj)\b', line, re.IGNORECASE):
+                continue
+            surrounding = " ".join(lines[max(0, idx - 2):min(len(lines), idx + 3)])
+            if serving_context_re.search(surrounding):
                 continue
             raw_line = raw_lines[idx] if idx < len(raw_lines) else line
             sq = re.search(r'\b(\d{1,4}(?:\.\d{1,2})?)\s*(g|gm|gms|grams|kg|kgs|ml|mls|l|ltr)\b', line, re.IGNORECASE)

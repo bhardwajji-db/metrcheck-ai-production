@@ -290,9 +290,10 @@ def _sync_paddle_extract(image_path: str, lang: str = "en") -> Tuple[List[str], 
                     return lines, words, confs
 
                 # 5. SVTR Text Recognition with chunked batches to keep RAM strictly bounded
-                inner_pipe.text_rec_model.batch_sampler.batch_size = 1
+                if hasattr(inner_pipe.text_rec_model, "batch_sampler"):
+                    inner_pipe.text_rec_model.batch_sampler.batch_size = 8
                 rec_res = []
-                CHUNK_SIZE = 4
+                CHUNK_SIZE = 8
                 logger.info(f"[OCR-STEP3] Calling text_rec_model on {len(crops)} crops (chunk size {CHUNK_SIZE})...")
                 for c_idx in range(0, len(crops), CHUNK_SIZE):
                     c_batch = crops[c_idx:c_idx + CHUNK_SIZE]
@@ -539,11 +540,11 @@ def _sync_paddle_extract_multiscale(image_path: str, lang: str = "en") -> Tuple[
     Targeted Secondary OCR (Region-Based OCR) inference pipeline with coordinate remapping and spatial deduplication.
     1. Checks deterministic image-level hash cache.
     2. Runs Base Pass 1 on original image with batch_size=1.
-    3. Evaluates if primary packaging text is already sufficient (>= 25 words with ingredients or front panel prominence).
+    3. Evaluates if primary packaging text is already sufficient (>= 6 words, ingredients and MRP, or front panel prominence).
        If sufficient, returns immediately in 1 pass.
     4. If fine-print statutory declarations require recovery, identifies candidate regions and crops ONLY
        the statutory candidate region(s), upscales by 1.35x, remaps coordinates, and merges tokens.
-    5. Controlled Fallback: If Pass 1 is severely degraded (< 8 words on non-empty image), runs full-image fallback.
+    5. Controlled Fallback: If Pass 1 is completely empty (len(words1) == 0 on non-empty image), runs full-image fallback.
     """
     import cv2
     import tempfile
@@ -571,13 +572,13 @@ def _sync_paddle_extract_multiscale(image_path: str, lang: str = "en") -> Tuple[
     t_pass1 = (time.perf_counter() - t0) * 1000
 
     raw_text = " ".join(lines1).upper()
-    has_ingr = any(k in raw_text for k in ["INGRED", "INORED", "NOREDIENT", "COMPOSITION", "CONTAINS", "SAMAGRI"])
+    has_ingr = any(k in raw_text for k in ["INGRED", "INORED", "NOREDIENT", "COMPOSITION", "CONTAINS", "SAMAGRI", "NCREDIENT"])
     has_mrp = any(k in raw_text for k in ["MRP", "M.R.P.", "MAXIMUM RETAIL", "UNIT SALE"])
     has_back_panel_indicators = any(k in raw_text for k in ["NUTRITION", "MARKETED BY", "MANUFACTURED", "FEEDBACK", "ALLERGEN", "FSSAI", "LIC NO"])
-    has_front_prominence = any((w.bbox[3] - w.bbox[1]) >= 28 for w in words1) and len(words1) >= 8 and not has_back_panel_indicators
+    has_front_prominence = any((w.bbox[3] - w.bbox[1]) >= 20 for w in words1) and len(words1) >= 2 and not has_back_panel_indicators
 
     # If front panel image or statutory declarations/words already found in Pass 1, avoid 2nd pass
-    if len(words1) >= 12 or (has_ingr and has_mrp) or has_front_prominence or (has_ingr and len(words1) >= 8):
+    if has_front_prominence or (has_ingr and has_mrp) or (not has_back_panel_indicators and len(words1) >= 6):
         # Reconstruct reading-order geometric lines from accepted words
         words_sorted = sorted(words1, key=lambda w: (w.bbox[1], w.bbox[0]))
         reconstructed_lines: List[str] = []
@@ -621,8 +622,8 @@ def _sync_paddle_extract_multiscale(image_path: str, lang: str = "en") -> Tuple[
     h, w = img.shape[:2]
     scale = 1.35
 
-    # 2. Controlled Fallback: If Pass 1 is severely degraded (< 8 words on non-empty image)
-    if len(words1) < 8 and (w * h) > 10000:
+    # 2. Controlled Fallback: Only if Pass 1 returned 0 words on non-empty image
+    if len(words1) == 0 and (w * h) > 10000:
         logger.warning(f"[OCR] Degraded Pass 1 ({len(words1)} words) for {os.path.basename(image_path)}. Running full-image fallback.")
         img_up = cv2.resize(img, (int(round(w * scale)), int(round(h * scale))), interpolation=cv2.INTER_CUBIC)
         tmp_fd, tmp_path = tempfile.mkstemp(suffix="_fallback.png")

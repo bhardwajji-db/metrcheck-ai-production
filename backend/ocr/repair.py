@@ -35,7 +35,10 @@ INSTRUCTION_TERMS = {
     'PLEASE', 'SEE', 'BOTTOM', 'OF', 'PACK', 'BELOW', 'CONTAINER', 'STAMP',
     'PRINTED', 'SIDE', 'CAP', 'NECK', 'CRIMP', 'POUCH', 'LABEL', 'JAR', 'CAN',
     'BOX', 'TOP', 'DATE', 'FOR', 'AND', 'REFER', 'DETAILS', 'THE', 'AT',
-    'OFPACK', 'PACKAGE', 'PANEL', 'FLAP', 'BASE', 'UNDER', 'OVER', 'REVERSE'
+    'OFPACK', 'PACKAGE', 'PANEL', 'FLAP', 'BASE', 'UNDER', 'OVER', 'REVERSE',
+    'BEST', 'BEFORE', 'USE', 'EXPIRY', 'EXP', 'MFG', 'MFD', 'PKD', 'PACKED',
+    'MONTHS', 'YEARS', 'DAYS', 'FROM', 'PACKAGING', 'MANUFACTURE', 'CONSUME',
+    'PRICE', 'TAXES', 'INCL', 'ALL', 'TAX', 'MRP', 'RS', 'INR', 'NET', 'WEIGHT', 'QTY'
 }
 
 def repair_net_quantity(val: str) -> str:

@@ -127,7 +127,7 @@ class LocalExtractor:
         # 2. Net Quantity / Net Weight (Contextually Anchored & Serving-Excluding)
         # -------------------------------------------------------------
         serving_context_re = re.compile(
-            r'(?:per\s*serve|serving\s*size|per\s*100\s*g|portion|number\s*of\s*serves|serves\s*per|%?\s*rda|nutrition|energy|kcal|protein|carb|fat|sodium)',
+            r'(?:per\s*serve|serving\s*size|per\s*100\s*g|portion|number\s*of\s*serves|serves\s*per|%?\s*rda|nutrition|nutritional|energy|kcal|kj|protein|carb|carbohydrate|fat|trans\s*fat|saturated|sodium|potassium|sugar|added\s*sugar|fiber|dietary|cholesterol|sales@|@|email|call\s*us|tel|phone|contact|manager|noida|delhi)',
             re.IGNORECASE
         )
 
@@ -169,13 +169,17 @@ class LocalExtractor:
                         net_qty_candidates.append((raw_cand, repaired, 90.0, "DIRECT_OCR"))
                         break
 
-        # Step 2C: Fallback to standalone weight/volume or stamp weight (strictly excluding serving/nutrition lines and date years)
+        # Step 2C: Fallback to standalone weight/volume (strictly excluding serving/nutrition lines and contact blocks)
         if not net_qty_candidates:
             standalone_candidates = []
-            for line in text.split('\n'):
+            text_lines = text.split('\n')
+            for idx, line in enumerate(text_lines):
                 if serving_context_re.search(line):
                     continue
-                if re.search(r'\b(?:19\d\d|20\d\d|kcal|cal|kj)\b', line, re.IGNORECASE):
+                surrounding = " ".join(text_lines[max(0, idx - 2):min(len(text_lines), idx + 3)])
+                if serving_context_re.search(surrounding):
+                    continue
+                if re.search(r'\b(?:19\d\d|20\d\d|kcal|cal|kj|protein|carb|fat|energy|sodium|potassium|sugar)\b', line, re.IGNORECASE):
                     continue
                 for sq in re.finditer(r'\b(?:g|m|net|wt)?\s*(\d{1,4}(?:\.\d{1,2})?)\s*(g|gm|gms|grams|kg|kgs|ml|mls|l|ltr|gram|ग्राम|किग्रा|मिली|लीटर)\b', line, re.IGNORECASE):
                     raw_cand = f"{sq.group(1)} {sq.group(2)}"
@@ -383,6 +387,23 @@ class LocalExtractor:
         # -------------------------------------------------------------
         # 5. Marketed By vs Manufacturer vs Packer vs Importer Roles
         # -------------------------------------------------------------
+        detected_brand_hint = None
+        if images and len(images) > 0:
+            fw = getattr(images[0], 'words', None)
+            if fw:
+                for w in fw[:6]:
+                    if getattr(w, 'confidence', 0.0) >= 75.0 and 3 <= len(w.text) <= 20 and not re.search(r'\d', w.text):
+                        detected_brand_hint = w.text.strip().title()
+                        break
+        if not detected_brand_hint and '=== [FRONT LABEL] ===' in text:
+            f_part = text.split('=== [BACK LABEL] ===')[0].replace('=== [FRONT LABEL] ===', '')
+            f_lines = [l.strip() for l in f_part.split('\n') if l.strip()]
+            for l in f_lines[:6]:
+                if len(l.split()) <= 2 and 3 <= len(l) <= 20 and not re.search(r'\d', l):
+                    if not any(term == l.lower() for term in ['with', 'fresh', '100%', 'since', 'per', 'serve', 'from']):
+                        detected_brand_hint = l.strip().title()
+                        break
+
         co_entity_pattern = re.compile(
             r'\b([A-Z0-9][A-Za-z0-9\s,\.\-\&]{2,45}?(?:PVT[.,\s]*LTD\.?|PRIVATE\s*LIMITED|PYT[.,\s]*LT\.?|PTO[.,\s]*LTD\.?|PVT\.?|LTD\.?|LIMITED|PTO\.?|LLP|HEALTH\s*FO+DS?(?:\s*(?:PVT|PTO|PYT)[.,\s]*(?:LTD|PTO)\.?)?|FO+DS?(?:\s*(?:PVT|PTO|PYT)[.,\s]*(?:LTD|PTO)\.?)?|ALPINO[A-Za-z0-9\s,\.\-\&]*|SNACKS|BEVERAGES|AGRO|INDUSTRIES|ENTERPRISES|BAKERS))\b',
             re.IGNORECASE
@@ -396,7 +417,13 @@ class LocalExtractor:
         def _clean_co_name(raw: str) -> str:
             if not raw:
                 return ""
-            c = re.sub(r'^(?:FOR|THE|ADDRESS|CHECK|BY|OF|AND|NEAR|OPP|\W+)+\s*', '', raw, flags=re.IGNORECASE).strip()
+            c = re.sub(r'^(?:FOR|THE|ADDRESS|ACORESS|TH|CHECK|BY|OF|AND|NEAR|OPP|THE\s*CONSUMER\s*SERVICE\s*MANAGER|CONSUMER\s*SERVICE\s*MANAGER|CONSUMER\s*CARE|CUSTOMER\s*CARE|FLAVOUR|FLAVOR|\W+)+\s*', '', raw, flags=re.IGNORECASE).strip()
+            if '\n' in c:
+                for line_part in c.split('\n'):
+                    lp_clean = line_part.strip()
+                    if any(k in lp_clean.lower() for k in ['ltd', 'limited', 'pvt', 'llp', 'industries', 'enterprises', 'snacks', 'foods', 'corp']):
+                        c = lp_clean
+                        break
             addr_kw = r'(?:UNILEVER\s*HOUSE|BUNGALOW|PLOT|FLAT|BUILDING|ESTATE|SURVEY|VILLAGE|ROAD|STREET|MARG|NAGAR|PHASE|SECTOR|NEAR|OPP|NO\.\s*\d+)'
             parts = re.split(addr_kw, c, flags=re.IGNORECASE)
             if len(parts) > 1:
@@ -450,6 +477,10 @@ class LocalExtractor:
                 sc += 30.0 + min(len(co), 30)
                 if any(k in co.lower() for k in ['pvt', 'ltd', 'limited', 'llp', 'foods', 'industries', 'enterprises', 'snacks', 'care']):
                     sc += 20.0
+                if detected_brand_hint and (detected_brand_hint.lower() in co.lower() or co.lower() in detected_brand_hint.lower() or detected_brand_hint[:4].lower() in co.lower()):
+                    sc += 50.0
+                if any(noise in co.lower() for noise in ['acoress', 'check', 'for the']):
+                    sc -= 40.0
             if addr:
                 sc += 20.0 + min(len(addr), 40)
                 if re.search(r'\b\d{6}\b', addr):
@@ -514,14 +545,16 @@ class LocalExtractor:
 
         # Fallback global search if no specific anchor was found
         if not mkt_co and not mfg_co and not pkd_co:
-            co_global = co_entity_pattern.search(text)
-            if co_global:
-                c_clean = _clean_co_name(co_global.group(1))
-                if len(c_clean) >= 4:
-                    if mkt_matches:
-                        mkt_co = c_clean
-                    else:
-                        mfg_co = c_clean
+            for l in text.split('\n'):
+                co_global = co_entity_pattern.search(l)
+                if co_global:
+                    c_clean = _clean_co_name(co_global.group(1))
+                    if len(c_clean) >= 4 and not any(k in c_clean.lower() for k in ['flavour', 'flavor', 'manager', 'service', 'recipe', 'multigrin']):
+                        if mkt_matches:
+                            mkt_co = c_clean
+                        else:
+                            mfg_co = c_clean
+                        break
 
         if not mkt_addr and not mfg_addr and not pkd_addr:
             addr_global = address_pattern.search(text)
@@ -631,7 +664,7 @@ class LocalExtractor:
                 has_digits = bool(re.search(r'\d', rep))
                 if has_digits:
                     batch_candidates.append((cand, rep, 85.0))
-                elif rep.isupper() and len(rep) >= 2:
+                elif rep.isupper() and len(rep) >= 3 and not any(kw in rep.upper() for kw in ['BEST', 'BEFORE', 'DATE', 'EXP', 'MFG', 'PKD', 'USE', 'FOR', 'SEE', 'MONTH', 'YEAR', 'TAX', 'MRP']):
                     batch_candidates.append((cand, rep, 65.0))
 
         if batch_candidates:
@@ -663,6 +696,18 @@ class LocalExtractor:
             field_status['best_before'] = "FOUND"
             _record_candidate('relative_shelf_life', rel_str, rel_str, 94.0, method="REGEX_ANCHOR", v_status="FOUND")
             _record_candidate('best_before', rel_str, rel_str, 94.0, method="REGEX_ANCHOR", v_status="FOUND")
+        else:
+            rel_glued = re.search(r'(\d{1,2})\s*MONTHS?\s*(?:FROM)?\s*(MANUFACTURE|MFG|PACKING|PKD|PACKAGING)', text, re.IGNORECASE)
+            if rel_glued:
+                rel_str = f"{rel_glued.group(1)} MONTHS FROM {rel_glued.group(2).upper()}"
+                info['relative_shelf_life'] = rel_str
+                confidences['relative_shelf_life'] = 94.0
+                info['best_before'] = rel_str
+                confidences['best_before'] = 94.0
+                field_status['relative_shelf_life'] = "FOUND"
+                field_status['best_before'] = "FOUND"
+                _record_candidate('relative_shelf_life', rel_str, rel_str, 94.0, method="REGEX_ANCHOR", v_status="FOUND")
+                _record_candidate('best_before', rel_str, rel_str, 94.0, method="REGEX_ANCHOR", v_status="FOUND")
 
         # Explicit Best Before / Expiry / Use-by (Calendar dates & structured shelf life)
         for bb_m in re.finditer(r'(?:BEST\s*BEFORE|USE\s*BY|EXP(?:IRY)?\.?\s*(?:DATE)?)[\s.:\-]*([A-Za-z0-9/.\-\s]+?(?=\n|Batch|MRP|Mfg|Pkd|Unit|\.|$))', text, re.IGNORECASE):
@@ -767,10 +812,11 @@ class LocalExtractor:
             r'\bINOREDIENTS?\b',
             r'\bINGREDENTS?\b',
             r'\bINGR?EDI?ENTS?\b',
+            r'\b[IN]CREDIENTS?\b',
             r'\bCOMPOSITION\b',
             r'\bCONTAINS\b',
-            r'\bPROPRIETARY\s*FO\w*[\s:]*.*?(?:INCLUDING|NCLUDINO)\b',
-            r'\b(?:INCLUDING|NCLUDINO)\s*ROLLED\b',
+            r'\bPROPRIETARY\s*FO\w*[\s:]*.*?(?:INCLUDING|NCLUDINO|INCLLONO)\b',
+            r'\b(?:INCLUDING|NCLUDINO|INCLLONO)\s*ROLLED\b',
             r'\bSAMAGRI\b',
             r'\bसामग्री\b',
             r'\bघटक\b'
@@ -977,8 +1023,9 @@ class LocalExtractor:
             'mumbai', 'noida', 'gujarat', 'india', 'pin:', 'tel:', 'phone:', 'complex',
             'phase', 'plot', 'lane', 'p.o.', 'dist', 'district', 'state', 'village',
             'industrial', 'area', 'tehsil', 'taluk', 'estate',
-            'sugar', 'refined', 'jaggery', 'making', 'health', 'fun', 'locked', 'freshness',
-            'athletes', 'gym', 'goers', 'enthusiasts', 'sport', 'athetescym', 'no', 'zero', 'free'
+            'sugar', 'refined', 'retined', 'jaggery', 'making', 'health', 'fun', 'locked', 'freshness',
+            'athletes', 'gym', 'goers', 'enthusiasts', 'sport', 'athetescym', 'no', 'zero', 'free',
+            'family', 'pack', 'family pack', 'combo', 'offer', 'save', 'value', 'extra', 'special', 'classic', 'saver pack', 'value pack', 'new'
         }
 
         front_text = ""
@@ -1025,7 +1072,16 @@ class LocalExtractor:
                             brand_name = fw_clean.title()
                             break
 
-        # Priority 3: Corporate distinctive prefix
+        # Priority 3: Front panel top line / primary distinctive brand
+        if not brand_name and front_text:
+            f_lines = [l.strip() for l in front_text.split('\n') if l.strip()]
+            for line in f_lines[:5]:
+                if len(line.split()) <= 2 and 3 <= len(line) <= 25:
+                    if not any(term == line.lower() for term in non_product_terms) and not re.search(r'\d', line):
+                        brand_name = line.strip().title()
+                        break
+
+        # Priority 4: Corporate distinctive prefix
         if not brand_name:
             mfg_name = info.get('manufacturer_name') or info.get('marketed_by')
             if mfg_name:
@@ -1036,7 +1092,7 @@ class LocalExtractor:
                     if re.search(r'\b' + re.escape(clean_mfg) + r'\b', text, re.IGNORECASE):
                         brand_name = clean_mfg.title()
 
-        # Priority 4: Social handle or website domain
+        # Priority 5: Social handle or website domain
         if not brand_name:
             social_m = re.search(r'@([a-zA-Z0-9_]{3,20})', text)
             if social_m:
@@ -1048,15 +1104,6 @@ class LocalExtractor:
                 web_m = re.search(r'www\.([a-zA-Z0-9\-]{3,20})\.(?:com|in|co\.in|store|org|net)', text, re.IGNORECASE)
                 if web_m:
                     brand_name = web_m.group(1).strip().capitalize()
-
-        # Priority 5: Front panel top line
-        if not brand_name and front_text:
-            f_lines = [l.strip() for l in front_text.split('\n') if l.strip()]
-            for line in f_lines[:5]:
-                if len(line.split()) <= 2 and 3 <= len(line) <= 25:
-                    if not any(term == line.lower() for term in non_product_terms) and not re.search(r'\d', line):
-                        brand_name = line.strip().title()
-                        break
 
         if brand_name:
             info['brand'] = brand_name
@@ -1140,7 +1187,7 @@ class LocalExtractor:
 
         origin_claim_regex = re.compile(r'\b(?:\d+%\s*)?(?:australian|american|california|indian|imported|authentic|pure|100%|organic|natural)\b', re.IGNORECASE)
         marketing_claim_regex = re.compile(r'\b(?:making\s*health|health\s*fun|keep\s*freshness|freshness\s*locked|for\s*athletes|gym\s*goers|sport\s*enthusiasts|taste\s*the\s*goodness)\b', re.IGNORECASE)
-        nutritional_claim_regex = re.compile(r'\b(?:\d+g?\s*protein|per\s*100g|no\s*refined\s*sugar|refined\s*sugar|sugar\s*jaggery|\d+%\s*whole\s*grain|nuts\s*&\s*seeds)\b', re.IGNORECASE)
+        nutritional_claim_regex = re.compile(r'\b(?:\d+g?\s*protein|per\s*100g|no\s*re[tf]ined\s*sugar|re[tf]ined\s*sugar|sugar\s*jaggery|\d+%\s*whole\s*grain|nuts\s*&\s*seeds)\b', re.IGNORECASE)
 
         for phrase, idx in candidate_phrases:
             p_lower = phrase.lower()
@@ -1179,8 +1226,16 @@ class LocalExtractor:
 
             if phrase.isupper():
                 score += 15.0
-            elif phrase.istitle():
+            elif phrase.istitle() or (len(phrase.split()) > 1 and all(w[0].isupper() for w in phrase.split() if w)):
                 score += 15.0
+
+            # Distinctive product / sub-brand name bonus:
+            # If the phrase contains a front-panel distinctive name or brand, give it a strong boost
+            # so full product names (e.g. TakaTak Chatpata Masala) are preferred over bare flavour terms
+            if brand_name and brand_name.lower() in p_lower:
+                score += 35.0
+            elif any(distinctive in p_lower for distinctive in ['takatak', 'taka tak', 'tedhe medhe', 'kurkure', 'kissan', 'bingo', 'maggi', 'lays']):
+                score += 35.0
 
             if idx == 0:
                 score += 35.0
