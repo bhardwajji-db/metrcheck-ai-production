@@ -6,30 +6,48 @@ def repair_fssai_license(text: str) -> Optional[str]:
     High-recall contextual FSSAI licence repair.
     Searches for clean or slightly OCR-corrupted 14-digit sequences.
     Performs OCR character substitution: 'O'/'o'->0, 'l'/'I'->1, 'S'->5, 'B'->8, 'Z'/'z'->2.
+    Uses non-digit lookarounds (?<!\d)([12]\d{13})(?!\d) to recover 14 digits
+    even when prepended or joined with OCR noise artifacts (e.g. RODUA10014051000910).
     """
     if not text:
         return None
 
-    # 1. First check for clean 14-digit sequence
-    m = re.search(r'\b([12]\d{13})\b', text)
+    # 1. First check for 14-digit sequence bounded by non-digits
+    m = re.search(r'(?<!\d)([12]\d{13})(?!\d)', text)
     if m:
         return m.group(1)
 
     # 2. Contextual search near FSSAI / Lic No / Licence No
-    ctx_match = re.search(r'(?:FSSAI|FSBAI|FOSSA|Lic\.?\s*(?:No\.?|Number)?|Licence\s*No\.?)[\s.:\-=]*([0-9OlISBGzZ\s\-]{13,20})', text, re.IGNORECASE)
+    ctx_match = re.search(r'(?:FSSAI|FSBAI|FOSSA|Lic\.?\s*(?:No\.?|Number)?|Licence\s*No\.?)[\s.:\-=]*([A-Za-z0-9\s\-]{13,25})', text, re.IGNORECASE)
     if ctx_match:
-        cand = re.sub(r'[\s\-]', '', ctx_match.group(1)).translate(str.maketrans('OlISBGzZ', '01158622'))
-        if len(cand) >= 14 and cand[:14].isdigit() and cand[0] in '12':
-            return cand[:14]
+        cand = re.sub(r'[^0-9OlISBGzZ]', '', ctx_match.group(1)).translate(str.maketrans('OlISBGzZ', '01158622'))
+        m_cand = re.search(r'(?<!\d)([12]\d{13})(?!\d)', cand)
+        if m_cand:
+            return m_cand.group(1)
 
-    # 3. Check any standalone candidate
-    candidates = re.findall(r'\b[12][0-9OlISBGzZ\s\-]{13,18}\b', text)
-    for cand in candidates:
+    # 3. Check standalone candidates with character substitutions bounded by non-alphanumerics
+    candidates = re.finditer(r'(?<![0-9OlISBGzZ])([12][0-9OlISBGzZ\s\-]{13,20})(?![0-9OlISBGzZ])', text)
+    for cm in candidates:
+        cand = cm.group(1)
         repaired = re.sub(r'[\s\-]', '', cand).translate(str.maketrans('OlISBGzZ', '01158622'))
-        if len(repaired) == 14 and repaired.isdigit() and repaired[0] in '12':
-            return repaired
+        m_rep = re.search(r'(?<!\d)([12]\d{13})(?!\d)', repaired)
+        if m_rep:
+            return m_rep.group(1)
 
     return None
+
+STATUTORY_BATCH_REJECT_TERMS = {
+    'BEST', 'BEFORE', 'EXP', 'EXPIRY', 'EXP_DATE', 'MFG', 'MFD', 'PKD', 'PACKED',
+    'DATE', 'DATES', 'DT', 'USE', 'BY', 'USEBY', 'USE_BY', 'BESTBEFORE',
+    'LOT', 'BATCH', 'BN', 'BNO', 'MRP', 'RS', 'INR', 'USP', 'NET', 'WT',
+    'QTY', 'WEIGHT', 'QUANTITY', 'MONTHS', 'YEARS', 'DAYS', 'FROM', 'INCL',
+    'TAXES', 'ALL', 'SEE', 'BELOW', 'BOTTOM', 'OF', 'PACK', 'PANEL', 'FLAP',
+    'PRINTED', 'SIDE', 'CONTAINER', 'STAMP', 'CAP', 'NECK', 'CRIMP', 'POUCH',
+    'LABEL', 'JAR', 'CAN', 'BOX', 'TOP', 'REFER', 'DETAILS', 'THE', 'AT',
+    'OFPACK', 'PACKAGE', 'BASE', 'UNDER', 'OVER', 'REVERSE', 'PLEASE',
+    'PACKAGING', 'MANUFACTURE', 'CONSUME', 'PRICE', 'TAX', 'CONSUMER',
+    'CARE', 'MANAGER', 'SERVICE', 'CUSTOMER', 'FEEDBACK'
+}
 
 INSTRUCTION_TERMS = {
     'PLEASE', 'SEE', 'BOTTOM', 'OF', 'PACK', 'BELOW', 'CONTAINER', 'STAMP',
@@ -165,7 +183,8 @@ def repair_batch_number(val: str) -> str:
     """
     Contextual batch number repair.
     Preserves valid alphanumeric lot identifiers and strips leading/trailing delimiter noise.
-    Strictly filters out English instructional words (e.g., 'PLEASE', 'SEE BOTTOM OF PACK').
+    Strictly filters out English statutory words and packaging instructions.
+    Rejects purely alphabetic statutory terms.
     """
     if not val:
         return ""
@@ -177,15 +196,20 @@ def repair_batch_number(val: str) -> str:
     if not tokens:
         return ""
 
-    # Filter out pure instructional words
-    valid_tokens = [t for t in tokens if t.upper() not in INSTRUCTION_TERMS]
+    # Filter out pure instructional and statutory words
+    valid_tokens = [t for t in tokens if t.upper() not in STATUTORY_BATCH_REJECT_TERMS and t.upper() not in INSTRUCTION_TERMS]
     if not valid_tokens:
         return ""
 
     cand = " ".join(valid_tokens)
     m = re.search(r'([A-Za-z0-9\-_\/]{2,30})', cand)
     if m:
-        res = m.group(1)
-        if res.upper() not in INSTRUCTION_TERMS:
-            return res
+        res = m.group(1).strip()
+        # Reject purely alphabetic statutory terms
+        if res.upper() in STATUTORY_BATCH_REJECT_TERMS or res.upper() in INSTRUCTION_TERMS:
+            return ""
+        # If purely alphabetic without digits, reject if in reject terms or short English fragment
+        if res.isalpha() and (len(res) < 2 or res.upper() in STATUTORY_BATCH_REJECT_TERMS or res.upper() in INSTRUCTION_TERMS):
+            return ""
+        return res
     return ""

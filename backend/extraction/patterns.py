@@ -6,7 +6,7 @@ PATTERNS = {
         re.IGNORECASE
     ),
     'net_quantity': re.compile(
-        r'(?:Net\s*(?:Wt\.?|Weight|Qty\.?|Quantity|Content|Vol\.?|Volume)|NETOTV|NET\s*QTV|शुद्ध\s*(?:मात्रा|वजन|भार)|मात्रा|भार|वजन)[\s.:\-A-Za-z\=]*([\d]+(?:\.\d+)?\s*(?:g|gm|gms|kg|ml|l|ltr|litre|liter|piece|pcs|N|9|ग्राम|कि\.?\s*ग्रा\.?|किग्रा|मि\.?\s*ली\.?|मिली|लीटर|ली\.?|इकाई|संख्या)s?)\b',
+        r'(?:Net\s*(?:Wt\.?|Weight|Qty\.?|Quantity|Content|Vol\.?|Volume)|NETIGHT|NETOTV|NET\s*QTV|NET\s*WT\b|NET\s*QUANTITY\b|शुद्ध\s*(?:मात्रा|वजन|भार))[\s.:\-A-Za-z\=]*([\d]+(?:\.\d+)?\s*(?:g|gm|gms|kg|ml|l|ltr|litre|liter|piece|pcs|N|9|ग्राम|कि\.?\s*ग्रा\.?|किग्रा|मि\.?\s*ली\.?|मिली|लीटर|ली\.?|इकाई|संख्या)s?)\b',
         re.IGNORECASE
     ),
     'manufacturing_date': re.compile(
@@ -61,7 +61,7 @@ PATTERNS = {
 
 FALLBACK_PATTERNS = {
     'mrp': re.compile(r'(?:₹|Rs\.|\bRs\b|INR)[^\S\r\n]*([0-9]{1,5}(?:\.[0-9]{1,2})?)', re.IGNORECASE),
-    'fssai_license': re.compile(r'\b(1\d{13}|2\d{13})\b'),
+    'fssai_license': re.compile(r'(?<!\d)([12]\d{13})(?!\d)'),
     'email': re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'),
     'phone': re.compile(r'(?:\+91[\s\-]?)?[6-9]\d{4}[\s\-]?\d{5}|1800[\s\-]?(?:\d{3}[\s\-]?\d{3,4}|\d{2}[\s\-]?\d{2}[\s\-]?\d{3,4}|\d{6,8})|0\d{2,4}[-\s]?\d{6,8}'),
     'company': re.compile(r'\b([A-Za-z\s]{3,35}\s*(?:Health\s*Foods|Foods|Snacks|Enterprises|Industries|Bakers|Pvt\s*Ltd|Pvt\.?\s*Ltd|Py?t\s*Lt\.?|Private\s*Limited|Ltd\.?|LLP))\b', re.IGNORECASE),
